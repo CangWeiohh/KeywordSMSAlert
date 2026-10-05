@@ -389,6 +389,8 @@ killall -9 imagent; sbreload
 <key>SoundFile</key>            <string></string>
 <key>DuplicateInterval</key>    <real>10</real>
 <key>OnNewMatchedSMS</key>      <string>restart</string>    <!-- restart / ignore / queue -->
+<key>HookMessageStoreBackstop</key>   <true/>   <!-- 排查用：置 false 只保留 SMSServiceSession 这一路 Hook -->
+<key>HookServiceSessionBackstop</key> <true/>
 <key>DebugEnabled</key>         <false/>
 <key>LogToFile</key>            <false/>
 <key>TestAlertOnLoad</key>      <false/>
@@ -572,6 +574,48 @@ log stream --predicate 'eventMessage CONTAINS "PreferenceLoader"' --style compac
 | **设置里换了声音，提醒音却没变** | 1.0.3 及更早：选择器行的「行标识」被当成配置键用，值写进了 `SoundPicker` 而不是 `SoundFile`（1.0.5 已修） | 装 1.0.5 → **重新选一次**（写入 `SoundFile`）→ `ksactl status` 看 `SoundFile` 是否 `[exists]`；历史误写的键可清掉：`ksactl set SoundPicker default` |
 
 **兜底**：即使设置入口一直不可用，功能与配置也不受影响 —— 用 `ksactl`（§8.2）改配置、`ksactl test` 验证提醒。
+
+
+---
+
+## 14. 这个插件会删除短信吗？——写操作审计（结论：不会）
+
+代码里**所有**会修改外部状态的调用只有三处，全部作用于本插件自己的文件，与短信、短信数据库、消息对象无关：
+
+| 代码位置 | 写的是什么 |
+| --- | --- |
+| `KSAPrefsStore` / `ksactl` | 本插件的配置文件 `com.keyword.smsalert.plist` |
+| `KSALog` | 本插件自己的日志文件（可选，超 256 KB 轮转） |
+| `KSASoundConverter` / `KSASoundPickerController` | 试听/转码用的临时 `alert-*.caf`（在 `<jbroot>/Library/KeywordSMSAlert/` 或 Settings 沙箱） |
+
+对短信侧，插件只做**只读**操作：
+
+* 所有 Hook 都是 `id result = %orig;`（或 `%orig;`）→ **先执行系统原实现，参数一个都不改，返回值原样返回**，之后才读消息对象；
+* 读消息只用 KVC（`valueForKey:` 取 `plainBody` / `body` / `guid` / `sender` / `service` / `isFromMe`），**没有任何 setter**；
+* 源码中**不存在** `sqlite3`、`INSERT/UPDATE/DELETE`、`deleteMessage`、`removeItem`（针对 `sms.db`）等调用 —— 可用
+  `grep -rnE "sqlite3|DELETE|deleteMessage|INSERT" Sources/` 自行复核（只会命中注释与 `ksactl db` 的只读查询）。
+
+### 如果发现「有提醒，但信息里看不到这条短信」
+
+按顺序排查（绝大多数是「信息」App 视图缓存或过滤，而不是短信被删）：
+
+1. **强制退出「信息」App 再打开**。`postinst`/`ksactl restart` 会重启 imagent，正在运行的「信息」App 可能仍抱着旧视图/旧连接，看不到新到达的短信。
+2. **检查过滤**：`设置 → 信息 → 过滤未知发件人`（未知短号/服务号会被分到「未知发件人」列表）；若有第三方短信过滤 App（腾讯/360 等）也会单独归类。
+3. **直接用只读查询确认数据库里到底有没有**：
+
+   ```bash
+   ksactl db 20        # 只读(SQLITE_OPEN_READONLY) 列出 sms.db 最新 20 条 + 总条数
+   ```
+   * 能查到这条 → 短信**已入库**，只是「信息」App 没显示（回到第 1 步，或看第 2 步的过滤）。
+   * 查不到 → 说明它从未入库，而插件不写库（见上面的审计），此时要看是不是第三方过滤/运营商侧问题，或安装过程中 imagent 正在重启那 1–2 秒内到达（`postinst` 会重启 imagent）。
+4. **A/B 对照**（可选）：把两个兜底 Hook 关掉，只保留最贴近短信服务插件的那一路，然后重启 imagent 再复测：
+
+   ```bash
+   ksactl set HookMessageStoreBackstop false
+   ksactl set HookServiceSessionBackstop false
+   killall -9 imagent          # 或 ksactl restart
+   ```
+   若问题依旧/消失都只是用来定位，不代表插件写数据（插件没有写数据的代码路径）。
 
 ## 12. 后续扩展
 
