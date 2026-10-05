@@ -1,0 +1,42 @@
+#!/bin/sh
+#
+# KeywordSMSAlert postinst
+#
+# Runs inside the roothide bootstrap, where "/" is the (randomly named) jailbreak
+# root, so these paths are jbroot relative - exactly like the package layout.
+#
+set -e
+
+# Allow the alert host (SpringBoard, running as mobile) to write the optional log
+# file next to the alert sound when LogToFile is enabled.
+mkdir -p /Library/KeywordSMSAlert 2>/dev/null || true
+chown -R mobile:mobile /Library/KeywordSMSAlert 2>/dev/null || true
+chmod 755 /Library/KeywordSMSAlert 2>/dev/null || true
+chmod 644 /Library/KeywordSMSAlert/alert.caf 2>/dev/null || true
+
+# The configuration file must stay user editable.
+chmod 644 /var/mobile/Library/Preferences/com.keyword.smsalert.plist 2>/dev/null || true
+
+echo "KeywordSMSAlert: installed."
+echo "KeywordSMSAlert: configuration: /var/mobile/Library/Preferences/com.keyword.smsalert.plist"
+if [ ! -d /Library/PreferenceLoader/Preferences ]; then
+	echo "KeywordSMSAlert: NOTE - PreferenceLoader was not found."
+	echo "KeywordSMSAlert:   The tweak works without it, but the Settings pane"
+	echo "KeywordSMSAlert:   (Settings -> KeywordSMSAlert) needs the 'preferenceloader' package."
+fi
+
+# The SMS detector is injected into imagent; restarting that daemon is invisible to
+# the user (launchd brings it straight back) and makes the new detector dylib active
+# without a respring. SpringBoard is restarted by the respring Sileo offers, or by
+# 'ksactl restart' / 'sbreload'.
+if command -v killall >/dev/null 2>&1; then
+	killall -9 imagent 2>/dev/null || true
+	echo "KeywordSMSAlert: imagent restarted (detector reloaded)."
+else
+	echo "KeywordSMSAlert: restart imagent manually: launchctl kickstart -k system/com.apple.imagent"
+fi
+
+echo "KeywordSMSAlert: settings pane: Settings -> KeywordSMSAlert (needs PreferenceLoader)."
+echo "KeywordSMSAlert: run 'sbreload' (or restart Dopamine) so SpringBoard loads the tweak."
+
+exit 0

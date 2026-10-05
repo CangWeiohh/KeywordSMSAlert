@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Enabled</key>
+	<true/>
+
+	<key>Keywords</key>
+	<array>
+		<string>验证码</string>
+		<string>支付</string>
+		<string>重要</string>
+		<string>紧急</string>
+	</array>
+
+	<key>MatchMode</key>
+	<string>contains</string>
+	<key>CaseInsensitive</key>
+	<true/>
+	<key>MinMessageLength</key>
+	<integer>1</integer>
+	<key>IgnoreSenders</key>
+	<array/>
+
+	<key>AlertMode</key>
+	<integer>3</integer>
+
+	<key>VibrationEnabled</key>
+	<true/>
+	<key>VibrationDuration</key>
+	<real>5</real>
+	<key>VibrationInterval</key>
+	<real>0.7</real>
+
+	<key>SoundEnabled</key>
+	<true/>
+	<key>SoundDuration</key>
+	<real>10</real>
+	<key>SoundVolume</key>
+	<real>0.8</real>
+	<key>SoundLoop</key>
+	<true/>
+	<key>SoundFile</key>
+	<string></string>
+
+	<key>DuplicateInterval</key>
+	<real>10</real>
+	<key>OnNewMatchedSMS</key>
+	<string>restart</string>
+
+	<key>DebugEnabled</key>
+	<false/>
+	<key>LogToFile</key>
+	<false/>
+	<key>TestAlertOnLoad</key>
+	<false/>
+</dict>
+</plist>

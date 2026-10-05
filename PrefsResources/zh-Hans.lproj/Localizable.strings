@@ -1,0 +1,73 @@
+/* KeywordSMSAlert 设置面板（简体中文） */
+
+"PrefsTitle" = "KeywordSMSAlert";
+
+"GroupGeneral" = "";
+"FooterGeneral" = "收到包含任一关键词的短信时触发提醒。短信检测在 imagent 中完成，因此 Messages 未打开、后台、锁屏状态都能生效。";
+"Enabled" = "启用 KeywordSMSAlert";
+
+"GroupKeywords" = "关键词";
+"FooterKeywords" = "纯字符串匹配，中文可直接使用；关键词列表为空时永不触发。";
+"Keywords" = "关键词";
+"MatchMode" = "匹配方式";
+"MatchContains" = "包含";
+"MatchExact" = "完整等于";
+"MatchPrefix" = "以…开头";
+"CaseInsensitive" = "忽略大小写";
+"IgnoreSenders" = "忽略的发件人";
+
+"GroupAlert" = "提醒";
+"FooterAlert" = "提醒方式 0=关闭，1=震动，2=声音，3=震动+声音。音量是相对于系统媒体音量的倍数，不会改动系统音量。提醒过程中按一下电源键即可立即停止。";
+"AlertMode" = "提醒方式";
+"AlertOff" = "关闭";
+"AlertVibrate" = "只震动";
+"AlertSound" = "只声音";
+"AlertBoth" = "震动 + 声音";
+"VibrationEnabled" = "震动";
+"VibrationDuration" = "震动时长（秒）";
+"VibrationInterval" = "震动间隔（秒）";
+"SoundEnabled" = "声音";
+"SoundDuration" = "声音时长（秒）";
+"SoundVolume" = "音量（0 - 1）";
+"SoundLoop" = "循环播放";
+"SoundFile" = "声音文件（可留空）";
+
+"GroupBehaviour" = "行为";
+"FooterBehaviour" = "去重窗口：同一条短信在此时间内的重复事件会被忽略（秒）。提醒进行中又收到匹配短信时的行为：重新开始 / 忽略 / 排队。";
+"DuplicateInterval" = "去重时间（秒）";
+"OnNewMatchedSMS" = "提醒中又收到匹配短信";
+"PolicyRestart" = "重新开始提醒";
+"PolicyIgnore" = "忽略";
+"PolicyQueue" = "排队等待";
+"IncludeIMessage" = "同时匹配 iMessage";
+
+"GroupDebug" = "诊断";
+"FooterDebug" = "配置文件：%@\n修改立即生效。详细日志会把短信内容写入系统日志，仅在排查问题时开启。";
+"DebugEnabled" = "详细日志";
+"LogToFile" = "同时写入日志文件";
+"TestAlertOnLoad" = "SpringBoard 加载 3 秒后测试提醒";
+"TestAlertNow" = "立即测试提醒";
+"TestAlertSentTitle" = "已发送测试提醒";
+"TestAlertSentMessage" = "现在应该开始提醒，按电源键可立即停止。";
+
+"GroupItems" = "";
+"FooterTouchToEdit" = "点按某一条可以修改或删除。";
+"EmptyListHint" = "还没有内容，点右上角 ＋ 添加。";
+"AddItem" = "添加";
+"AddItemTitle" = "添加";
+"EditItemTitle" = "修改";
+"ItemPlaceholder" = "例如 验证码";
+"EditItem" = "修改";
+"RemoveItem" = "删除";
+"FooterChooseOne" = "选择其中一项。";
+"Cancel" = "取消";
+"Save" = "保存";
+"OK" = "好";
+
+"SoundChannel" = "声音通道";
+"ChannelAlert" = "铃声 / 提醒音量（推荐）";
+"ChannelMedia" = "媒体音量";
+"SoundPicker" = "从系统提示音 / 铃声中选";
+"SoundBuiltIn" = "（内置 alert.caf）";
+"SoundNoneFound" = "本机没有扫描到可用声音";
+"FooterSoundPicker" = "点按即选中并试听（与提醒同通道）；再点一次或返回即停止。当前：%@\n默认走铃声/提醒通道；m4r 铃声与 mp3 会自动转成 CAF 后仍走提醒通道。";

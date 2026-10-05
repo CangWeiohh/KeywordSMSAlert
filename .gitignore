@@ -1,0 +1,14 @@
+# Theos 构建产物
+.theos/
+packages/
+*.deb
+
+# macOS / 编辑器
+.DS_Store
+*.swp
+.vscode/
+.idea/
+
+# 本地临时文件
+*.orig
+*.rej

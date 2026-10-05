@@ -1,0 +1,73 @@
+/* KeywordSMSAlert settings pane (English) */
+
+"PrefsTitle" = "KeywordSMSAlert";
+
+"GroupGeneral" = "";
+"FooterGeneral" = "When an incoming SMS contains one of the keywords, KeywordSMSAlert plays the alert. SMS detection happens in imagent, so it also works while the Messages app is closed, in the background and on the lock screen.";
+"Enabled" = "Enable KeywordSMSAlert";
+
+"GroupKeywords" = "Keywords";
+"FooterKeywords" = "Matching is a plain string search, so Chinese keywords work as-is. An empty keyword list never triggers.";
+"Keywords" = "Keywords";
+"MatchMode" = "Match mode";
+"MatchContains" = "Contains";
+"MatchExact" = "Exactly equals";
+"MatchPrefix" = "Starts with";
+"CaseInsensitive" = "Case insensitive";
+"IgnoreSenders" = "Ignored senders";
+
+"GroupAlert" = "Alert";
+"FooterAlert" = "Alert mode 0 = off, 1 = vibration, 2 = sound, 3 = vibration + sound. Sound volume is relative to the system media volume; the system volume itself is never changed. Press the power button while the alert is playing to stop it immediately.";
+"AlertMode" = "Alert mode";
+"AlertOff" = "Off";
+"AlertVibrate" = "Vibration only";
+"AlertSound" = "Sound only";
+"AlertBoth" = "Vibration + sound";
+"VibrationEnabled" = "Vibration";
+"VibrationDuration" = "Vibration duration (s)";
+"VibrationInterval" = "Vibration interval (s)";
+"SoundEnabled" = "Sound";
+"SoundDuration" = "Sound duration (s)";
+"SoundVolume" = "Sound volume (0 - 1)";
+"SoundLoop" = "Loop the sound";
+"SoundFile" = "Sound file (optional)";
+
+"GroupBehaviour" = "Behaviour";
+"FooterBehaviour" = "Duplicate interval: repeated callbacks for the same SMS are ignored inside this window (seconds). When a new matching SMS arrives while an alert is running: restart, ignore or queue.";
+"DuplicateInterval" = "Duplicate interval (s)";
+"OnNewMatchedSMS" = "On a new matching SMS";
+"PolicyRestart" = "Restart the alert";
+"PolicyIgnore" = "Ignore it";
+"PolicyQueue" = "Queue it";
+"IncludeIMessage" = "Also match iMessage";
+
+"GroupDebug" = "Diagnostics";
+"FooterDebug" = "Configuration file: %@\nChanges are applied immediately. Debug logging prints message bodies to the system log, enable it only while troubleshooting.";
+"DebugEnabled" = "Verbose logging";
+"LogToFile" = "Also write a log file";
+"TestAlertOnLoad" = "Test alert 3s after SpringBoard loads";
+"TestAlertNow" = "Test the alert now";
+"TestAlertSentTitle" = "Test alert sent";
+"TestAlertSentMessage" = "The alert should start now. Press the power button to stop it.";
+
+"GroupItems" = "";
+"FooterTouchToEdit" = "Tap an entry to edit or delete it.";
+"EmptyListHint" = "No entries yet. Use ＋ to add one.";
+"AddItem" = "Add entry";
+"AddItemTitle" = "Add entry";
+"EditItemTitle" = "Edit entry";
+"ItemPlaceholder" = "e.g. 验证码";
+"EditItem" = "Edit";
+"RemoveItem" = "Delete";
+"FooterChooseOne" = "Select one option.";
+"Cancel" = "Cancel";
+"Save" = "Save";
+"OK" = "OK";
+
+"SoundChannel" = "Sound channel";
+"ChannelAlert" = "Ringer / alert volume (recommended)";
+"ChannelMedia" = "Media volume";
+"SoundPicker" = "Pick a built-in sound / ringtone";
+"SoundBuiltIn" = "(bundled alert.caf)";
+"SoundNoneFound" = "No sounds found on this device";
+"FooterSoundPicker" = "Tap a sound to select it and hear a preview (same channel as the alert). Tap it again or go back to stop. Current: %@\nThe ringer/alert channel is used by default; m4r ringtones and mp3 files are converted to CAF automatically.";
