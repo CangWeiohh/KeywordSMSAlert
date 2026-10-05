@@ -48,6 +48,11 @@
 	<key>OnNewMatchedSMS</key>
 	<string>restart</string>
 
+	<key>DetectionMode</key>
+	<string>db</string>
+	<key>PollInterval</key>
+	<real>1.5</real>
+
 	<key>HookMessageStoreBackstop</key>
 	<false/>
 	<key>HookServiceSessionBackstop</key>

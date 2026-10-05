@@ -360,6 +360,22 @@ static NSString *KSAMessageItemText(id item)
     }
 }
 
+- (void)handlePlainText:(NSString *)text
+                 sender:(NSString *)sender
+               identity:(NSString *)identity
+                service:(NSString *)service
+                 source:(NSString *)source
+{
+    @autoreleasepool {
+        @try {
+            [self _recordHookHit:source];
+            [self _evaluateText:text sender:sender identity:identity service:service source:source];
+        } @catch (NSException *exception) {
+            KSAInfo(@"detector exception (ignored): %@", exception.reason);
+        }
+    }
+}
+
 #pragma mark - Shared evaluation pipeline
 
 - (void)_evaluateText:(NSString *)text

@@ -35,7 +35,7 @@ export TARGET = iphone:clang:latest:15.4
 # roothide support that ships with roothide/theos (vendor/mod/roothide).
 THEOS_PACKAGE_SCHEME = roothide
 
-PACKAGE_VERSION = 1.0.7
+PACKAGE_VERSION = 1.1.0
 
 include $(THEOS)/makefiles/common.mk
 
@@ -55,11 +55,13 @@ TWEAK_NAME = KeywordSMSAlertDetector KeywordSMSAlertAlert
 KeywordSMSAlertDetector_FILES = \
 	Sources/KeywordSMSAlertDetector.xm \
 	Sources/KSASMSDetector.m \
+	Sources/KSASMSWatcher.m \
 	$(KSA_SHARED_FILES)
 
 KeywordSMSAlertDetector_CFLAGS = $(KSA_CFLAGS)
 KeywordSMSAlertDetector_FRAMEWORKS = Foundation CoreFoundation
 # jbroot() comes from libroothide.dylib (roothide API, see roothide/Developer).
+KeywordSMSAlertDetector_LIBRARIES = sqlite3
 KeywordSMSAlertDetector_LDFLAGS = -lroothide
 
 # ------------------------------------------------------------------- alert ---

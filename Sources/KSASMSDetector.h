@@ -35,6 +35,13 @@
 /// /isFromMe are read. Must be fast and must never throw.
 - (void)handleMessageItem:(id)item source:(NSString *)source;
 
+/// Entry point for the hook free database watcher: already extracted plain values.
+- (void)handlePlainText:(NSString *)text
+                 sender:(NSString *)sender
+               identity:(NSString *)identity
+                service:(NSString *)service
+                 source:(NSString *)source;
+
 /// Human readable summary of what was detected / hooked so far.
 - (NSString *)diagnostics;
 

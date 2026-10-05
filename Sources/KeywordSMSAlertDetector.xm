@@ -42,6 +42,7 @@
 #import "KSAConfig.h"
 #import "KSALog.h"
 #import "KSASMSDetector.h"
+#import "KSASMSWatcher.h"
 #import "KSATrigger.h"
 
 #import "KSAPrivateAPI.h"
@@ -209,6 +210,9 @@ static void KSAInstallAvailableHooks(void)
             }
             return;
         }
+        if ([[KSAConfig sharedInstance].detectionMode isEqualToString:@"db"]) {
+            return;   // hook free mode: never install anything
+        }
 
         if (!sInstalledSMSServiceHooks) {
             Class clazz = objc_getClass("SMSServiceSession");
@@ -349,6 +353,18 @@ static void KSAImageAddedCallback(const struct mach_header *header, intptr_t sli
             KSAInfo(@"plugin disabled (Enabled=false): detector idle, imagent left untouched");
             return;
         }
+
+        // Default: hook free detection. Nothing in imagent is hooked, the SMS database
+        // is only ever opened read only on a private queue, so SMS reception cannot be
+        // affected by this tweak. Latency = PollInterval (default 1.5 s).
+        if ([[KSAConfig sharedInstance].detectionMode isEqualToString:@"db"]) {
+            KSAInfo(@"detection mode: db (hook free; read only polling every %.1fs)",
+                    [KSAConfig sharedInstance].pollInterval);
+            [[KSASMSWatcher sharedInstance] start];
+            return;
+        }
+
+        KSAInfo(@"detection mode: hooks (hooking the imagent message pipeline)");
 
         Class serviceClass = objc_getClass("IMDService");
         if (serviceClass != Nil &&
