@@ -35,7 +35,7 @@ export TARGET = iphone:clang:latest:15.4
 # roothide support that ships with roothide/theos (vendor/mod/roothide).
 THEOS_PACKAGE_SCHEME = roothide
 
-PACKAGE_VERSION = 1.0.6
+PACKAGE_VERSION = 1.0.7
 
 include $(THEOS)/makefiles/common.mk
 

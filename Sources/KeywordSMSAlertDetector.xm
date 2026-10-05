@@ -191,6 +191,7 @@ static void KSAInstallAvailableHooks(void);
 #pragma mark - Installation (lazy classes, runtime verified)
 
 static BOOL sInstalledSMSServiceHooks = NO;
+static BOOL sKSAReportedDisabled = NO;
 static BOOL sInstalledMessageStoreHooks = NO;
 static BOOL sInstalledServiceSessionHooks = NO;
 static NSUInteger sInstallAttempts = 0;
@@ -198,6 +199,17 @@ static NSUInteger sInstallAttempts = 0;
 static void KSAInstallAvailableHooks(void)
 {
     @try {
+        // Emergency switch: with Enabled = false in the configuration file nothing is
+        // hooked at all, so restarting imagent runs the SMS daemon completely
+        // untouched by this tweak.
+        if (![[KSAConfig sharedInstance] enabled]) {
+            if (!sKSAReportedDisabled) {
+                sKSAReportedDisabled = YES;
+                KSAInfo(@"plugin disabled (Enabled=false): no hooks are installed in imagent");
+            }
+            return;
+        }
+
         if (!sInstalledSMSServiceHooks) {
             Class clazz = objc_getClass("SMSServiceSession");
             if (clazz != Nil) {
@@ -332,6 +344,11 @@ static void KSAImageAddedCallback(const struct mach_header *header, intptr_t sli
 
         KSAInfo(@"detector loaded into %@ (pid %d)", KSAProcessName(), getpid());
         [[KSASMSDetector sharedInstance] start];
+
+        if (![[KSAConfig sharedInstance] enabled]) {
+            KSAInfo(@"plugin disabled (Enabled=false): detector idle, imagent left untouched");
+            return;
+        }
 
         Class serviceClass = objc_getClass("IMDService");
         if (serviceClass != Nil &&

@@ -389,8 +389,8 @@ killall -9 imagent; sbreload
 <key>SoundFile</key>            <string></string>
 <key>DuplicateInterval</key>    <real>10</real>
 <key>OnNewMatchedSMS</key>      <string>restart</string>    <!-- restart / ignore / queue -->
-<key>HookMessageStoreBackstop</key>   <true/>   <!-- 排查用：置 false 只保留 SMSServiceSession 这一路 Hook -->
-<key>HookServiceSessionBackstop</key> <true/>
+<key>HookMessageStoreBackstop</key>   <false/>  <!-- 1.0.7 起默认关闭；需要更强兜底时置 true -->
+<key>HookServiceSessionBackstop</key> <false/>  <!-- 同上 -->
 <key>DebugEnabled</key>         <false/>
 <key>LogToFile</key>            <false/>
 <key>TestAlertOnLoad</key>      <false/>
@@ -578,7 +578,32 @@ log stream --predicate 'eventMessage CONTAINS "PreferenceLoader"' --style compac
 
 ---
 
-## 14. 这个插件会删除短信吗？——写操作审计（结论：不会）
+## 14. 应急开关与写操作审计
+
+### 14.1 一键停用（不需要卸载）
+
+```bash
+ksactl set Enabled false      # 关掉总开关
+killall -9 imagent            # 让 imagent 重新启动
+```
+
+**1.0.7 起 `Enabled = false` 时 imagent 侧完全不安装任何 Hook**（连 `IMDService` 触发点都不挂）——
+也就是说此时短信守护进程与没装插件时完全一致，用来一键排除/恢复。SpringBoard 侧仍会加载提醒 dylib，
+但检测不到短信就不会有任何行为；要连它一起排除就卸载 + respring：
+
+```bash
+dpkg -r com.keyword.smsalert && killall -9 imagent && sbreload
+```
+
+### 14.2 默认 Hook 策略（1.0.7 起）
+
+| 配置键 | 默认 | 说明 |
+| --- | --- | --- |
+| （SMSServiceSession 两路） | **始终启用** | 最贴近短信服务插件（`SMS.imservice`）的入口，实机 trace 证据 |
+| `HookMessageStoreBackstop` | **false** | `IMDMessageStore -storeItem/storeMessage` 兜底；默认关闭，需要更强覆盖时再打开 |
+| `HookServiceSessionBackstop` | **false** | `IMDServiceSession -didReceiveMessage:` 兜底；同上 |
+
+### 14.3 这个插件会删除短信吗？——不会（写操作审计）
 
 代码里**所有**会修改外部状态的调用只有三处，全部作用于本插件自己的文件，与短信、短信数据库、消息对象无关：
 

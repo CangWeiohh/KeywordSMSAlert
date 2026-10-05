@@ -48,6 +48,11 @@
 	<key>OnNewMatchedSMS</key>
 	<string>restart</string>
 
+	<key>HookMessageStoreBackstop</key>
+	<false/>
+	<key>HookServiceSessionBackstop</key>
+	<false/>
+
 	<key>DebugEnabled</key>
 	<false/>
 	<key>LogToFile</key>

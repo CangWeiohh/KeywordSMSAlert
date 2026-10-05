@@ -460,8 +460,8 @@ static NSArray<NSString *> *KSAReadKeywordsFile(NSString *path)
         kKeyDebugEnabled:      @(KSABoolValue(raw, @"DebugEnabled", NO)),
         kKeyLogToFile:         @(KSABoolValue(raw, @"LogToFile", NO)),
         kKeyTestAlertOnLoad:   @(KSABoolValue(raw, @"TestAlertOnLoad", NO)),
-        kKeyMessageStoreBackstop:   @(KSABoolValue(raw, @"HookMessageStoreBackstop", YES)),
-        kKeyServiceSessionBackstop: @(KSABoolValue(raw, @"HookServiceSessionBackstop", YES)),
+        kKeyMessageStoreBackstop:   @(KSABoolValue(raw, @"HookMessageStoreBackstop", NO)),
+        kKeyServiceSessionBackstop: @(KSABoolValue(raw, @"HookServiceSessionBackstop", NO)),
     };
 }
 
