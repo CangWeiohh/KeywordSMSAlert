@@ -30,6 +30,7 @@
 #import <string.h>
 #import <stdlib.h>
 #import <unistd.h>
+#import <sqlite3.h>
 
 static NSString *const KSADomainName = @"com.keyword.smsalert";
 static NSString *const KSAReloadNotification = @"com.keyword.smsalert.reload";
@@ -135,9 +136,109 @@ static void KSAPrintUsage(void)
            "  ksactl senders  list|add|remove|clear   same for IgnoreSenders\n"
            "  ksactl test                       fire a test alert now\n"
            "  ksactl reload                     ask the tweak to reload the file\n"
-           "  ksactl restart                    restart imagent + SpringBoard (apply an update)\n\n"
+           "  ksactl restart                    restart imagent + SpringBoard (apply an update)\n"
+           "  ksactl db [n]                     list the newest n SMS from sms.db (READ ONLY)\n\n"
            "Common keys: Enabled AlertMode Keywords MatchMode VibrationDuration SoundDuration\n"
            "             SoundVolume DuplicateInterval DebugEnabled LogToFile TestAlertOnLoad\n");
+}
+
+/// The SMS database, seen from the bootstrap shell: "/" is the jailbreak root, so the
+/// real iOS database is below /rootfs. The second candidate covers running outside the
+/// bootstrap.
+static NSString *KSASMSDatabasePath(void)
+{
+    for (NSString *candidate in @[ @"/rootfs/var/mobile/Library/SMS/sms.db",
+                                   @"/var/mobile/Library/SMS/sms.db" ]) {
+        if ([[NSFileManager defaultManager] fileExistsAtPath:candidate]) {
+            return candidate;
+        }
+    }
+    return nil;
+}
+
+/// Prints the newest messages from sms.db. Opened strictly READ ONLY - this tool (and
+/// the tweak) never writes to the message database.
+static void KSACommandDatabase(NSArray<NSString *> *arguments)
+{
+    NSInteger limit = arguments.count > 0 ? [arguments[0] integerValue] : 10;
+    if (limit <= 0 || limit > 200) {
+        limit = 10;
+    }
+
+    NSString *path = KSASMSDatabasePath();
+    if (path == nil) {
+        printf("sms.db not found (checked /rootfs/var/mobile/Library/SMS/ and /var/mobile/Library/SMS/)\n");
+        return;
+    }
+    printf("database : %s\nread only: yes (KeywordSMSAlert never writes to it)\n", path.UTF8String);
+
+    sqlite3 *database = NULL;
+    if (sqlite3_open_v2(path.UTF8String, &database, SQLITE_OPEN_READONLY, NULL) != SQLITE_OK) {
+        printf("cannot open: %s\n", database != NULL ? sqlite3_errmsg(database) : "unknown error");
+        if (database != NULL) {
+            sqlite3_close(database);
+        }
+        return;
+    }
+    sqlite3_busy_timeout(database, 1500);
+
+    sqlite3_stmt *statement = NULL;
+    if (sqlite3_prepare_v2(database, "SELECT COUNT(*) FROM message", -1, &statement, NULL) == SQLITE_OK) {
+        if (sqlite3_step(statement) == SQLITE_ROW) {
+            printf("messages : %lld in total\n", sqlite3_column_int64(statement, 0));
+        }
+        sqlite3_finalize(statement);
+        statement = NULL;
+    }
+
+    const char *sqlWithService =
+        "SELECT m.date, m.is_from_me, m.service, m.text, h.id, m.guid FROM message m "
+        "LEFT JOIN handle h ON m.handle_id = h.ROWID ORDER BY m.date DESC LIMIT ?";
+    const char *sqlNoService =
+        "SELECT m.date, m.is_from_me, NULL, m.text, h.id, m.guid FROM message m "
+        "LEFT JOIN handle h ON m.handle_id = h.ROWID ORDER BY m.date DESC LIMIT ?";
+
+    if (sqlite3_prepare_v2(database, sqlWithService, -1, &statement, NULL) != SQLITE_OK) {
+        statement = NULL;
+        sqlite3_prepare_v2(database, sqlNoService, -1, &statement, NULL);
+    }
+    if (statement == NULL) {
+        printf("cannot read the message table: %s\n", sqlite3_errmsg(database));
+        sqlite3_close(database);
+        return;
+    }
+
+    static NSDateFormatter *formatter = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        formatter = [[NSDateFormatter alloc] init];
+        formatter.dateFormat = @"MM-dd HH:mm:ss";
+    });
+
+    sqlite3_bind_int(statement, 1, (int)limit);
+    printf("\nnewest %ld message(s):\n", (long)limit);
+    while (sqlite3_step(statement) == SQLITE_ROW) {
+        double appleEpoch = sqlite3_column_double(statement, 0);
+        NSDate *date = [NSDate dateWithTimeIntervalSinceReferenceDate:appleEpoch];
+        int fromMe = sqlite3_column_int(statement, 1);
+
+        const unsigned char *service = sqlite3_column_text(statement, 2);
+        const unsigned char *text = sqlite3_column_text(statement, 3);
+        const unsigned char *handle = sqlite3_column_text(statement, 4);
+        const unsigned char *guid = sqlite3_column_text(statement, 5);
+
+        printf("  %s  %s  service=%-6s  %s  text=%s\n",
+               [formatter stringFromDate:date].UTF8String,
+               fromMe ? "me ->   " : "<- them ",
+               service != NULL ? (const char *)service : "?",
+               handle != NULL ? (const char *)handle : "(no handle)",
+               text != NULL ? (const char *)text : "(no text column - iMessage stores it in attributedBody)");
+        if (guid != NULL && strlen((const char *)guid) > 8) {
+            printf("            guid: %s\n", (const char *)guid);
+        }
+    }
+    sqlite3_finalize(statement);
+    sqlite3_close(database);
 }
 
 static void KSACommandStatus(void)
@@ -316,6 +417,8 @@ int main(int argc, char *argv[])
                 configuration[parameters[0]] = value;
             }
             KSASaveConfiguration(configuration);
+        } else if ([command isEqualToString:@"db"] || [command isEqualToString:@"sms"]) {
+            KSACommandDatabase(parameters);
         } else if ([command isEqualToString:@"test"]) {
             KSAPostNotification(KSATriggerNotification);
             printf("test alert requested (the phone should vibrate / play the sound now)\n");

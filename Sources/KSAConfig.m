@@ -31,6 +31,8 @@ static NSString *const kKeyOnNewMatchedSMS   = @"onNewMatchedSMS";
 static NSString *const kKeyDebugEnabled      = @"debugEnabled";
 static NSString *const kKeyLogToFile         = @"logToFile";
 static NSString *const kKeyTestAlertOnLoad   = @"testAlertOnLoad";
+static NSString *const kKeyMessageStoreBackstop    = @"messageStoreBackstop";
+static NSString *const kKeyServiceSessionBackstop  = @"serviceSessionBackstop";
 
 static const NSTimeInterval kKSAReloadThrottle = 2.0;
 
@@ -458,6 +460,8 @@ static NSArray<NSString *> *KSAReadKeywordsFile(NSString *path)
         kKeyDebugEnabled:      @(KSABoolValue(raw, @"DebugEnabled", NO)),
         kKeyLogToFile:         @(KSABoolValue(raw, @"LogToFile", NO)),
         kKeyTestAlertOnLoad:   @(KSABoolValue(raw, @"TestAlertOnLoad", NO)),
+        kKeyMessageStoreBackstop:   @(KSABoolValue(raw, @"HookMessageStoreBackstop", YES)),
+        kKeyServiceSessionBackstop: @(KSABoolValue(raw, @"HookServiceSessionBackstop", YES)),
     };
 }
 
@@ -500,6 +504,8 @@ static NSArray<NSString *> *KSAReadKeywordsFile(NSString *path)
 - (BOOL)debugEnabled { return [self._snapshot[kKeyDebugEnabled] boolValue]; }
 - (BOOL)logToFile { return [self._snapshot[kKeyLogToFile] boolValue]; }
 - (BOOL)testAlertOnLoad { return [self._snapshot[kKeyTestAlertOnLoad] boolValue]; }
+- (BOOL)messageStoreBackstop { return [self._snapshot[kKeyMessageStoreBackstop] boolValue]; }
+- (BOOL)serviceSessionBackstop { return [self._snapshot[kKeyServiceSessionBackstop] boolValue]; }
 
 - (NSString *)activeConfigPath
 {

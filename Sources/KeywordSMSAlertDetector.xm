@@ -221,8 +221,13 @@ static void KSAInstallAvailableHooks(void)
         }
 
         if (!sInstalledMessageStoreHooks) {
+            // Optional (default on). Can be disabled to isolate behaviour.
+            if (![[KSAConfig sharedInstance] messageStoreBackstop]) {
+                sInstalledMessageStoreHooks = YES;
+                KSAInfo(@"IMDMessageStore backstop disabled by configuration");
+            }
             Class clazz = objc_getClass("IMDMessageStore");
-            if (clazz != Nil) {
+            if (clazz != Nil && [[KSAConfig sharedInstance] messageStoreBackstop]) {
                 BOOL hooked = NO;
                 if (class_getInstanceMethod(clazz, @selector(storeItem:forceReplace:))) {
                     %init(KSAStoreItemHooks);
@@ -249,8 +254,12 @@ static void KSAInstallAvailableHooks(void)
         }
 
         if (!sInstalledServiceSessionHooks) {
+            if (![[KSAConfig sharedInstance] serviceSessionBackstop]) {
+                sInstalledServiceSessionHooks = YES;
+                KSAInfo(@"IMDServiceSession backstop disabled by configuration");
+            }
             Class clazz = objc_getClass("IMDServiceSession");
-            if (clazz != Nil) {
+            if (clazz != Nil && [[KSAConfig sharedInstance] serviceSessionBackstop]) {
                 BOOL hooked = NO;
                 if (class_getInstanceMethod(clazz, @selector(didReceiveMessage:forChat:style:account:fromIDSID:))) {
                     %init(KSADidReceive5Hooks);

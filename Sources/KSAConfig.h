@@ -98,6 +98,13 @@ typedef NS_ENUM(NSInteger, KSAOnNewMatchedSMS) {
 /// sending a real SMS. Off by default.
 @property (nonatomic, readonly) BOOL testAlertOnLoad;
 
+/// Safety switches for the two "backstop" hook families in imagent. Both default to
+/// YES. Setting one to NO and restarting imagent leaves only the (SMS specific)
+/// SMSServiceSession hooks active - useful to isolate behaviour if a message ever
+/// seemed to be missing.
+@property (nonatomic, readonly) BOOL messageStoreBackstop;
+@property (nonatomic, readonly) BOOL serviceSessionBackstop;
+
 /// Path of the configuration file that is currently in use (may be nil).
 @property (nonatomic, readonly, copy) NSString *activeConfigPath;
 

@@ -35,7 +35,7 @@ export TARGET = iphone:clang:latest:15.4
 # roothide support that ships with roothide/theos (vendor/mod/roothide).
 THEOS_PACKAGE_SCHEME = roothide
 
-PACKAGE_VERSION = 1.0.5
+PACKAGE_VERSION = 1.0.6
 
 include $(THEOS)/makefiles/common.mk
 
@@ -104,6 +104,7 @@ TOOL_NAME = ksactl
 ksactl_FILES = Sources/Tools/ksactl.m
 ksactl_CFLAGS = -fobjc-arc -Wno-unused-parameter
 ksactl_FRAMEWORKS = Foundation CoreFoundation
+ksactl_LIBRARIES = sqlite3
 ksactl_INSTALL_PATH = /usr/bin
 
 include $(THEOS_MAKE_PATH)/tool.mk

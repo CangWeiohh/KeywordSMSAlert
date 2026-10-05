@@ -1,6 +1,6 @@
 Package: com.keyword.smsalert
 Name: KeywordSMSAlert
-Version: 1.0.5
+Version: 1.0.6
 Architecture: iphoneos-arm64e
 Description: Alerts (vibration + sound) when an incoming SMS matches a keyword, and stops the alert when the power button is pressed. SMS detection runs in imagent, the alert engine and the power button watcher run in SpringBoard. Includes a Settings pane (Settings -> KeywordSMSAlert, needs PreferenceLoader). Designed for Dopamine RootHide / roothide on iOS 15.4.1.
 Maintainer: KeywordSMSAlert
