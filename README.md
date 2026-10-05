@@ -439,6 +439,7 @@ ksactl help
 | 不循环，只播一次 | `SoundLoop = false`（文件本身约 1 秒，建议 `SoundDuration` 设小一点） |
 | 换提醒音 | 把任意 `.caf`/`.aiff`/普通音频放到 `/Library/KeywordSMSAlert/alert.caf`，或 `SoundFile` 指定绝对路径 |
 | 某号码/短号不提醒 | `IgnoreSenders` 加子串，如 `"1069"`、`"95533"` |
+| 想更快/更省电的检测 | `PollInterval`（秒，0.5–30，默认 1）：**改完立即生效，无需重启**（设置面板里也有这一项） |
 | 同一短信 30 秒内只提醒一次 | `DuplicateInterval = 30` |
 | 排查问题 | `DebugEnabled = true`、`LogToFile = true` |
 | 不装短信也能测提醒 | `TestAlertOnLoad = true`（SpringBoard 加载后 3 秒自动来一发提醒） |
@@ -598,19 +599,19 @@ killall -9 imagent            # 让 imagent 重新启动
 dpkg -r com.keyword.smsalert && killall -9 imagent && sbreload
 ```
 
-### 14.2 检测方式（1.1.1 起默认无 Hook）
+### 14.2 检测方式（1.1.2 起默认无 Hook）
 
 | `DetectionMode` | 默认 | 机制 | 风险 / 代价 |
 | --- | --- | --- | --- |
-| **只读轮询 sms.db** | **唯一方式（1.1.1 起）** | 在 imagent 内只读轮询 `sms.db`（`SQLITE_OPEN_READONLY`，私有串行队列，`PollInterval` 默认 **1.0 s**） | **imagent 内零 Hook**（Hook 代码已从 dylib 中删除），不写库、不碰消息管线 → 不可能影响收信；代价约 1 秒延迟 |
+| **只读轮询 sms.db** | **唯一方式（1.1.2 起）** | 在 imagent 内只读轮询 `sms.db`（`SQLITE_OPEN_READONLY`，私有串行队列，`PollInterval` 默认 **1.0 s**） | **imagent 内零 Hook**（Hook 代码已从 dylib 中删除），不写库、不碰消息管线 → 不可能影响收信；代价约 1 秒延迟 |
 
 > **事故记录（2026-10-05）**：1.0.x 默认使用 Hook 方案，真机上出现「完全收不到短信」，卸载 + 用户空间重启后恢复。
-> 由于无法取得当时的崩溃栈，1.1.1 改为**默认不 Hook**的只读轮询方案：从机制上消除"插件影响收信"的可能。
+> 由于无法取得当时的崩溃栈，1.1.2 改为**默认不 Hook**的只读轮询方案：从机制上消除"插件影响收信"的可能。
 > 想回到零延迟可显式设置 `DetectionMode = hooks`（自担风险），两个兜底 Hook 仍默认关闭。
 
 | 配置键（仅 `hooks` 模式生效） | 默认 | 说明 |
 | --- | --- | --- |
-（`hooks` 模式与 `HookMessageStoreBackstop` / `HookServiceSessionBackstop` / `DetectionMode` 已在 1.1.1 **全部移除**：
+（`hooks` 模式与 `HookMessageStoreBackstop` / `HookServiceSessionBackstop` / `DetectionMode` 已在 1.1.2 **全部移除**：
 1.0.x 的 Hook 方案会造成 imagent 崩溃循环，见 §14.2 事故记录）
 
 ### 14.3 这个插件会删除短信吗？——不会（写操作审计）

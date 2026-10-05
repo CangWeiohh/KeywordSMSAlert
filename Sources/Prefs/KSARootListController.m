@@ -208,6 +208,9 @@ static NSString *const KSATriggerNotificationName = @"com.keyword.smsalert.trigg
     [specifiers addObject:[self ksaTextRow:KSAPrefsLocalized(@"DuplicateInterval")
                                        key:@"DuplicateInterval"
                               defaultValue:@10]];
+    [specifiers addObject:[self ksaTextRow:KSAPrefsLocalized(@"PollInterval")
+                                       key:@"PollInterval"
+                              defaultValue:@1]];
     [specifiers addObject:[self ksaChoiceRow:KSAPrefsLocalized(@"OnNewMatchedSMS")
                                          key:@"OnNewMatchedSMS"
                                       values:@[ @"restart", @"ignore", @"queue" ]

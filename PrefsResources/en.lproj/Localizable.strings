@@ -71,3 +71,4 @@
 "SoundBuiltIn" = "(bundled alert.caf)";
 "SoundNoneFound" = "No sounds found on this device";
 "FooterSoundPicker" = "Tap a sound to select it and hear a preview (same channel as the alert). Tap it again or go back to stop. Current: %@\nThe ringer/alert channel is used by default; m4r ringtones and mp3 files are converted to CAF automatically.";
+"PollInterval" = "SMS check interval (s) - applies immediately";

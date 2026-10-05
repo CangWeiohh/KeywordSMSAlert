@@ -22,6 +22,7 @@ static const int KSASMSWatcherBatchSize = 25;
     long long _highWaterRowID;
     BOOL _started;
     NSUInteger _failures;
+    NSTimeInterval _scheduledInterval;
 }
 
 + (instancetype)sharedInstance
@@ -133,6 +134,7 @@ static const int KSASMSWatcherBatchSize = 25;
 {
     KSAConfig *config = [KSAConfig sharedInstance];
     NSTimeInterval interval = MAX(config.pollInterval, 0.5);
+    _scheduledInterval = interval;
 
     if (_timer != NULL) {
         dispatch_source_cancel(_timer);
@@ -157,6 +159,15 @@ static const int KSASMSWatcherBatchSize = 25;
         @try {
             KSAConfig *config = [KSAConfig sharedInstance];
             [config reloadIfNeeded];
+
+            // PollInterval is picked up live: if the configuration asks for a different
+            // interval the timer is rebuilt here, so no imagent restart is needed.
+            NSTimeInterval desiredInterval = MAX(config.pollInterval, 0.5);
+            if (fabs(desiredInterval - _scheduledInterval) > 0.01) {
+                KSAInfo(@"poll interval changed: %.1fs -> %.1fs", _scheduledInterval, desiredInterval);
+                [self _scheduleNextPoll];
+                return;
+            }
 
             if (!config.enabled) {
                 return;   // nothing to do while disabled; the timer keeps ticking cheaply

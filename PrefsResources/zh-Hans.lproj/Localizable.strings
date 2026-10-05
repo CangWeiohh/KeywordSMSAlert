@@ -71,3 +71,4 @@
 "SoundBuiltIn" = "（内置 alert.caf）";
 "SoundNoneFound" = "本机没有扫描到可用声音";
 "FooterSoundPicker" = "点按即选中并试听（与提醒同通道）；再点一次或返回即停止。当前：%@\n默认走铃声/提醒通道；m4r 铃声与 mp3 会自动转成 CAF 后仍走提醒通道。";
+"PollInterval" = "短信检测间隔（秒）· 改完立即生效";
