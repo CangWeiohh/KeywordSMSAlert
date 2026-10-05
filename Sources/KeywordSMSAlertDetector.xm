@@ -4,38 +4,29 @@
 //
 //  Filter: com.apple.imagent
 //
-//  This dylib is deliberately tiny: it links only Foundation/CoreFoundation, the
-//  roothide API and the substrate hooking runtime. It does NOT link AVFoundation
-//  or AudioToolbox, so injecting it into the SMS daemon cannot drag audio
-//  frameworks, audio sessions or UI code into a critical system daemon.
+//  HOOK FREE BY DESIGN.
 //
-//  It does exactly three things, all on the daemon's message thread and all fast:
-//    1. let the original method run and return its original result untouched,
-//    2. look at the message object it produced (sender / text / GUID),
-//    3. on a keyword match, post a Darwin notification to SpringBoard.
+//  History: up to 1.0.7 this dylib hooked the imagent message pipeline
+//  (SMSServiceSession / IMDMessageStore / IMDServiceSession). On a real iPhone 12 /
+//  iOS 15.4.1 that produced a reproducible crash loop: every crash report showed
 //
-//  The SMS database, the notification centre, the Messages UI and the message flow
-//  itself are never modified.
+//      EXC_BAD_ACCESS (SIGSEGV) objc_retain
+//        -> KeywordSMSAlertDetector.dylib   (our main queue block)
+//        -> SMS (SMS.imservice plugin)
+//        -> imagent main run loop
 //
-//  Hook families, in order of preference:
-//    A. SMSServiceSession (earliest, SMS specific, SMS.imservice plugin)
-//       -_convertCTMessageToDictionary:requiresUpload:
-//       -_receivedSMSDictionary:requiresUpload:isBeingReplayed:
-//       Selectors observed on device by tracing imagent; verified at runtime here,
-//       and reported in the diagnostics log if they ever disappear.
-//    B. IMDMessageStore (IMDaemonCore) - backstop, signatures verified against the
-//       iOS 15.6 runtime headers. Runs for every stored message independent of
-//       notification/DND/foreground state and carries body + guid.
-//       -storeItem:forceReplace:
-//       -storeMessage:forceReplace:modifyError:modifyFlags:flagMask:[updateMessageCache:calculateUnreadCount:[reindexMessage:]]
-//    C. IMDServiceSession -didReceiveMessage:forChat:style:... - generic backstop.
+//  i.e. hooking a lazily loaded service-plugin class right after its
+//  -loadServiceBundle window left a dangling reference and the plugin crashed on
+//  objc_retain. launchd kept restarting imagent, so no SMS could be received at all.
+//  The hook based mode was therefore REMOVED in 1.1.1: this dylib now contains no
+//  hooks whatsoever and cannot affect SMS reception.
 //
-//  Duplicates between A/B/C are collapsed by the GUID based de-duplication cache.
+//  Detection is done by KSASMSWatcher: it polls sms.db READ ONLY on its own serial
+//  queue (SQLITE_OPEN_READONLY) and reports new incoming rows.
+//  To stop everything: Enabled = false, then restart imagent.
 //
 
 #import <Foundation/Foundation.h>
-#import <objc/runtime.h>
-#import <mach-o/dyld.h>
 #import <unistd.h>
 
 #import "KSACommon.h"
@@ -43,299 +34,6 @@
 #import "KSALog.h"
 #import "KSASMSDetector.h"
 #import "KSASMSWatcher.h"
-#import "KSATrigger.h"
-
-#import "KSAPrivateAPI.h"
-
-// Defined further down; used by the IMDService hook.
-static void KSAInstallAvailableHooks(void);
-
-#pragma mark - A. SMSServiceSession (SMS service plugin)
-
-//
-// The SMS service bundle loads lazily, so SMSServiceSession does not exist when
-// our constructor runs. This hook is the first reliable signal that it appeared.
-//
-%group KSASMSDefinitionHooks
-%hook IMDService
-- (void)loadServiceBundle
-{
-    %orig;
-
-    // Never install hooks from inside the bundle loading call stack; hop to the
-    // main queue so the class hierarchy is fully settled.
-    dispatch_async(dispatch_get_main_queue(), ^{
-        KSAInstallAvailableHooks();
-    });
-}
-%end
-%end
-
-%group KSASMSConvertHooks
-%hook SMSServiceSession
-- (id)_convertCTMessageToDictionary:(id)message requiresUpload:(BOOL)requiresUpload
-{
-    id result = %orig;
-    @try {
-        [[KSASMSDetector sharedInstance] handleCTMessage:message
-                                             dictionary:result
-                                                 source:@"_convertCTMessageToDictionary"];
-    } @catch (__unused NSException *exception) {
-    }
-    return result;
-}
-%end
-%end
-
-%group KSASMSReceivedHooks
-%hook SMSServiceSession
-- (id)_receivedSMSDictionary:(id)message requiresUpload:(BOOL)requiresUpload isBeingReplayed:(BOOL)isBeingReplayed
-{
-    id result = %orig;
-    @try {
-        [[KSASMSDetector sharedInstance] handleCTMessage:message
-                                             dictionary:result
-                                                 source:@"_receivedSMSDictionary"];
-    } @catch (__unused NSException *exception) {
-    }
-    return result;
-}
-%end
-%end
-
-#pragma mark - B. IMDMessageStore (IMDaemonCore backstop)
-
-%group KSAStoreItemHooks
-%hook IMDMessageStore
-- (id)storeItem:(id)item forceReplace:(BOOL)forceReplace
-{
-    id result = %orig;
-    @try {
-        [[KSASMSDetector sharedInstance] handleMessageItem:item source:@"IMDMessageStore.storeItem"];
-    } @catch (__unused NSException *exception) {
-    }
-    return result;
-}
-%end
-%end
-
-%group KSAStoreMessage5Hooks
-%hook IMDMessageStore
-- (id)storeMessage:(id)message forceReplace:(BOOL)forceReplace modifyError:(BOOL)modifyError modifyFlags:(BOOL)modifyFlags flagMask:(NSUInteger)flagMask
-{
-    id result = %orig;
-    @try {
-        [[KSASMSDetector sharedInstance] handleMessageItem:message source:@"IMDMessageStore.storeMessage5"];
-    } @catch (__unused NSException *exception) {
-    }
-    return result;
-}
-%end
-%end
-
-%group KSAStoreMessage7Hooks
-%hook IMDMessageStore
-- (id)storeMessage:(id)message forceReplace:(BOOL)forceReplace modifyError:(BOOL)modifyError modifyFlags:(BOOL)modifyFlags flagMask:(NSUInteger)flagMask updateMessageCache:(BOOL)updateMessageCache calculateUnreadCount:(BOOL)calculateUnreadCount
-{
-    id result = %orig;
-    @try {
-        [[KSASMSDetector sharedInstance] handleMessageItem:message source:@"IMDMessageStore.storeMessage7"];
-    } @catch (__unused NSException *exception) {
-    }
-    return result;
-}
-%end
-%end
-
-%group KSAStoreMessage8Hooks
-%hook IMDMessageStore
-- (id)storeMessage:(id)message forceReplace:(BOOL)forceReplace modifyError:(BOOL)modifyError modifyFlags:(BOOL)modifyFlags flagMask:(NSUInteger)flagMask updateMessageCache:(BOOL)updateMessageCache calculateUnreadCount:(BOOL)calculateUnreadCount reindexMessage:(BOOL)reindexMessage
-{
-    id result = %orig;
-    @try {
-        [[KSASMSDetector sharedInstance] handleMessageItem:message source:@"IMDMessageStore.storeMessage8"];
-    } @catch (__unused NSException *exception) {
-    }
-    return result;
-}
-%end
-%end
-
-#pragma mark - C. IMDServiceSession (generic backstop)
-
-%group KSADidReceive5Hooks
-%hook IMDServiceSession
-- (void)didReceiveMessage:(id)message forChat:(id)chat style:(unsigned char)style account:(id)account fromIDSID:(id)fromIDSID
-{
-    %orig;
-    @try {
-        [[KSASMSDetector sharedInstance] handleMessageItem:message source:@"IMDServiceSession.didReceiveMessage5"];
-    } @catch (__unused NSException *exception) {
-    }
-}
-%end
-%end
-
-%group KSADidReceive4Hooks
-%hook IMDServiceSession
-- (void)didReceiveMessage:(id)message forChat:(id)chat style:(unsigned char)style fromIDSID:(id)fromIDSID
-{
-    %orig;
-    @try {
-        [[KSASMSDetector sharedInstance] handleMessageItem:message source:@"IMDServiceSession.didReceiveMessage4"];
-    } @catch (__unused NSException *exception) {
-    }
-}
-%end
-%end
-
-#pragma mark - Installation (lazy classes, runtime verified)
-
-static BOOL sInstalledSMSServiceHooks = NO;
-static BOOL sKSAReportedDisabled = NO;
-static BOOL sInstalledMessageStoreHooks = NO;
-static BOOL sInstalledServiceSessionHooks = NO;
-static NSUInteger sInstallAttempts = 0;
-
-static void KSAInstallAvailableHooks(void)
-{
-    @try {
-        // Emergency switch: with Enabled = false in the configuration file nothing is
-        // hooked at all, so restarting imagent runs the SMS daemon completely
-        // untouched by this tweak.
-        if (![[KSAConfig sharedInstance] enabled]) {
-            if (!sKSAReportedDisabled) {
-                sKSAReportedDisabled = YES;
-                KSAInfo(@"plugin disabled (Enabled=false): no hooks are installed in imagent");
-            }
-            return;
-        }
-        if ([[KSAConfig sharedInstance].detectionMode isEqualToString:@"db"]) {
-            return;   // hook free mode: never install anything
-        }
-
-        if (!sInstalledSMSServiceHooks) {
-            Class clazz = objc_getClass("SMSServiceSession");
-            if (clazz != Nil) {
-                BOOL hooked = NO;
-                if (class_getInstanceMethod(clazz, @selector(_convertCTMessageToDictionary:requiresUpload:))) {
-                    %init(KSASMSConvertHooks);
-                    KSAInfo(@"hooked SMSServiceSession -_convertCTMessageToDictionary:requiresUpload:");
-                    hooked = YES;
-                }
-                if (class_getInstanceMethod(clazz, @selector(_receivedSMSDictionary:requiresUpload:isBeingReplayed:))) {
-                    %init(KSASMSReceivedHooks);
-                    KSAInfo(@"hooked SMSServiceSession -_receivedSMSDictionary:requiresUpload:isBeingReplayed:");
-                    hooked = YES;
-                }
-                sInstalledSMSServiceHooks = hooked;
-                if (!hooked) {
-                    KSAInfo(@"SMSServiceSession exists but neither traced selector is present "
-                             "on this build; relying on the IMDMessageStore backstop");
-                }
-            }
-        }
-
-        if (!sInstalledMessageStoreHooks) {
-            // Optional (default on). Can be disabled to isolate behaviour.
-            if (![[KSAConfig sharedInstance] messageStoreBackstop]) {
-                sInstalledMessageStoreHooks = YES;
-                KSAInfo(@"IMDMessageStore backstop disabled by configuration");
-            }
-            Class clazz = objc_getClass("IMDMessageStore");
-            if (clazz != Nil && [[KSAConfig sharedInstance] messageStoreBackstop]) {
-                BOOL hooked = NO;
-                if (class_getInstanceMethod(clazz, @selector(storeItem:forceReplace:))) {
-                    %init(KSAStoreItemHooks);
-                    KSAInfo(@"hooked IMDMessageStore -storeItem:forceReplace:");
-                    hooked = YES;
-                }
-                if (class_getInstanceMethod(clazz, @selector(storeMessage:forceReplace:modifyError:modifyFlags:flagMask:))) {
-                    %init(KSAStoreMessage5Hooks);
-                    KSAInfo(@"hooked IMDMessageStore -storeMessage:(5 args)");
-                    hooked = YES;
-                }
-                if (class_getInstanceMethod(clazz, @selector(storeMessage:forceReplace:modifyError:modifyFlags:flagMask:updateMessageCache:calculateUnreadCount:))) {
-                    %init(KSAStoreMessage7Hooks);
-                    KSAInfo(@"hooked IMDMessageStore -storeMessage:(7 args)");
-                    hooked = YES;
-                }
-                if (class_getInstanceMethod(clazz, @selector(storeMessage:forceReplace:modifyError:modifyFlags:flagMask:updateMessageCache:calculateUnreadCount:reindexMessage:))) {
-                    %init(KSAStoreMessage8Hooks);
-                    KSAInfo(@"hooked IMDMessageStore -storeMessage:(8 args)");
-                    hooked = YES;
-                }
-                sInstalledMessageStoreHooks = hooked;
-            }
-        }
-
-        if (!sInstalledServiceSessionHooks) {
-            if (![[KSAConfig sharedInstance] serviceSessionBackstop]) {
-                sInstalledServiceSessionHooks = YES;
-                KSAInfo(@"IMDServiceSession backstop disabled by configuration");
-            }
-            Class clazz = objc_getClass("IMDServiceSession");
-            if (clazz != Nil && [[KSAConfig sharedInstance] serviceSessionBackstop]) {
-                BOOL hooked = NO;
-                if (class_getInstanceMethod(clazz, @selector(didReceiveMessage:forChat:style:account:fromIDSID:))) {
-                    %init(KSADidReceive5Hooks);
-                    KSAInfo(@"hooked IMDServiceSession -didReceiveMessage:(5 args)");
-                    hooked = YES;
-                }
-                if (class_getInstanceMethod(clazz, @selector(didReceiveMessage:forChat:style:fromIDSID:))) {
-                    %init(KSADidReceive4Hooks);
-                    KSAInfo(@"hooked IMDServiceSession -didReceiveMessage:(4 args)");
-                    hooked = YES;
-                }
-                sInstalledServiceSessionHooks = hooked;
-            }
-        }
-
-        if (sInstalledSMSServiceHooks && sInstalledMessageStoreHooks && sInstalledServiceSessionHooks) {
-            KSALogSMSServiceSessionDiagnostics();
-        }
-    } @catch (NSException *exception) {
-        KSAInfo(@"installing detector hooks failed: %@", exception.reason);
-    }
-}
-
-/// Bounded safety net: 20 attempts over ~5 seconds, then it gives up and reports the
-/// runtime selectors it found instead of failing silently. This is not a polling
-/// loop for any user facing feature; it only waits for lazily loaded classes.
-static void KSAScheduleHookInstallRetries(void)
-{
-    BOOL everythingInstalled = sInstalledSMSServiceHooks &&
-                               sInstalledMessageStoreHooks &&
-                               sInstalledServiceSessionHooks;
-
-    if (everythingInstalled || sInstallAttempts >= 20) {
-        if (!everythingInstalled) {
-            KSAInfo(@"some detector hooks could not be installed (sms=%d store=%d session=%d); "
-                     "see the diagnostics lines above for the selectors this build actually has",
-                     sInstalledSMSServiceHooks, sInstalledMessageStoreHooks, sInstalledServiceSessionHooks);
-            KSALogSMSServiceSessionDiagnostics();
-        }
-        return;
-    }
-
-    sInstallAttempts++;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(250 * NSEC_PER_MSEC)),
-                   dispatch_get_main_queue(), ^{
-        KSAInstallAvailableHooks();
-        KSAScheduleHookInstallRetries();
-    });
-}
-
-/// dyld tells us whenever a new image is mapped - exactly what happens when the SMS
-/// service bundle is loaded. Event driven, no polling.
-static void KSAImageAddedCallback(const struct mach_header *header, intptr_t slide)
-{
-    dispatch_async(dispatch_get_main_queue(), ^{
-        KSAInstallAvailableHooks();
-    });
-}
-
-#pragma mark - Entry point
 
 %ctor
 {
@@ -346,37 +44,19 @@ static void KSAImageAddedCallback(const struct mach_header *header, intptr_t sli
             return;
         }
 
-        KSAInfo(@"detector loaded into %@ (pid %d)", KSAProcessName(), getpid());
+        KSAInfo(@"detector loaded into %@ (pid %d) - hook free detector",
+                KSAProcessName(), getpid());
+
         [[KSASMSDetector sharedInstance] start];
 
-        if (![[KSAConfig sharedInstance] enabled]) {
-            KSAInfo(@"plugin disabled (Enabled=false): detector idle, imagent left untouched");
+        KSAConfig *config = [KSAConfig sharedInstance];
+        if (!config.enabled) {
+            KSAInfo(@"plugin disabled (Enabled=false): nothing is installed or polled in imagent");
             return;
         }
 
-        // Default: hook free detection. Nothing in imagent is hooked, the SMS database
-        // is only ever opened read only on a private queue, so SMS reception cannot be
-        // affected by this tweak. Latency = PollInterval (default 1.5 s).
-        if ([[KSAConfig sharedInstance].detectionMode isEqualToString:@"db"]) {
-            KSAInfo(@"detection mode: db (hook free; read only polling every %.1fs)",
-                    [KSAConfig sharedInstance].pollInterval);
-            [[KSASMSWatcher sharedInstance] start];
-            return;
-        }
-
-        KSAInfo(@"detection mode: hooks (hooking the imagent message pipeline)");
-
-        Class serviceClass = objc_getClass("IMDService");
-        if (serviceClass != Nil &&
-            class_getInstanceMethod(serviceClass, @selector(loadServiceBundle)) != NULL) {
-            %init(KSASMSDefinitionHooks);
-            KSAInfo(@"watching IMDService -loadServiceBundle for the SMS service bundle");
-        } else {
-            KSAInfo(@"IMDService -loadServiceBundle not available; using dyld image notifications only");
-        }
-
-        KSAInstallAvailableHooks();
-        _dyld_register_func_for_add_image(&KSAImageAddedCallback);
-        KSAScheduleHookInstallRetries();
+        KSAInfo(@"detection: read only SMS database polling every %.1fs (no hooks in imagent)",
+                config.pollInterval);
+        [[KSASMSWatcher sharedInstance] start];
     }
 }

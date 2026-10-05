@@ -338,7 +338,10 @@ killall -9 imagent; sbreload
 
 ## 8. 配置
 
-配置文件（jbroot 内，从 roothide bootstrap shell 看到的路径就是它）：
+配置文件由 **`postinst` 首次安装时生成**，之后 dpkg 不再接管它 —— **升级永远不会提示、也不会覆盖你的设置**；
+文件缺失时插件使用内置的同一套默认值，设置面板或 `ksactl` 第一次保存时也会创建它。
+
+路径（jbroot 内，从 roothide bootstrap shell 看到的路径就是它）：
 
 ```
 /var/mobile/Library/Preferences/com.keyword.smsalert.plist
@@ -595,21 +598,20 @@ killall -9 imagent            # 让 imagent 重新启动
 dpkg -r com.keyword.smsalert && killall -9 imagent && sbreload
 ```
 
-### 14.2 检测方式（1.1.0 起默认无 Hook）
+### 14.2 检测方式（1.1.1 起默认无 Hook）
 
 | `DetectionMode` | 默认 | 机制 | 风险 / 代价 |
 | --- | --- | --- | --- |
-| **`db`** | **默认** | 在 imagent 内**只读轮询** `sms.db`（`SQLITE_OPEN_READONLY`，私有串行队列，`PollInterval` 默认 1.5 s） | **不在 imagent 内安装任何 Hook**，不写库、不碰消息管线 → 不可能影响收信；代价是 1–2 秒延迟 |
-| `hooks` | 关闭 | 在 imagent 内 Hook `SMSServiceSession`（+可选 `IMDMessageStore` / `IMDServiceSession` 兜底） | 零延迟，但会介入守护进程自身代码路径（1.0.x 的真机事故正是这一路） |
+| **只读轮询 sms.db** | **唯一方式（1.1.1 起）** | 在 imagent 内只读轮询 `sms.db`（`SQLITE_OPEN_READONLY`，私有串行队列，`PollInterval` 默认 **1.0 s**） | **imagent 内零 Hook**（Hook 代码已从 dylib 中删除），不写库、不碰消息管线 → 不可能影响收信；代价约 1 秒延迟 |
 
 > **事故记录（2026-10-05）**：1.0.x 默认使用 Hook 方案，真机上出现「完全收不到短信」，卸载 + 用户空间重启后恢复。
-> 由于无法取得当时的崩溃栈，1.1.0 改为**默认不 Hook**的只读轮询方案：从机制上消除"插件影响收信"的可能。
+> 由于无法取得当时的崩溃栈，1.1.1 改为**默认不 Hook**的只读轮询方案：从机制上消除"插件影响收信"的可能。
 > 想回到零延迟可显式设置 `DetectionMode = hooks`（自担风险），两个兜底 Hook 仍默认关闭。
 
 | 配置键（仅 `hooks` 模式生效） | 默认 | 说明 |
 | --- | --- | --- |
-| `HookMessageStoreBackstop` | **false** | `IMDMessageStore -storeItem/storeMessage` 兜底 |
-| `HookServiceSessionBackstop` | **false** | `IMDServiceSession -didReceiveMessage:` 兜底 |
+（`hooks` 模式与 `HookMessageStoreBackstop` / `HookServiceSessionBackstop` / `DetectionMode` 已在 1.1.1 **全部移除**：
+1.0.x 的 Hook 方案会造成 imagent 崩溃循环，见 §14.2 事故记录）
 
 ### 14.3 这个插件会删除短信吗？——不会（写操作审计）
 

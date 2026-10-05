@@ -102,14 +102,9 @@ typedef NS_ENUM(NSInteger, KSAOnNewMatchedSMS) {
 /// YES. Setting one to NO and restarting imagent leaves only the (SMS specific)
 /// SMSServiceSession hooks active - useful to isolate behaviour if a message ever
 /// seemed to be missing.
-/// "db"   (default) - passive, hook free: poll sms.db read only (latency = PollInterval)
-/// "hooks"          - hook the imagent message pipeline (instant, but touches the
-///                    daemon's own code path; only enable if you accept that risk)
-@property (nonatomic, readonly, copy) NSString *detectionMode;
+/// How often the (hook free) SMS database watcher looks for new messages, in seconds.
+/// The alert therefore fires within roughly `PollInterval` after the SMS arrives.
 @property (nonatomic, readonly) NSTimeInterval pollInterval;
-
-@property (nonatomic, readonly) BOOL messageStoreBackstop;
-@property (nonatomic, readonly) BOOL serviceSessionBackstop;
 
 /// Path of the configuration file that is currently in use (may be nil).
 @property (nonatomic, readonly, copy) NSString *activeConfigPath;

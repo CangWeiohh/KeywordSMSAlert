@@ -31,10 +31,7 @@ static NSString *const kKeyOnNewMatchedSMS   = @"onNewMatchedSMS";
 static NSString *const kKeyDebugEnabled      = @"debugEnabled";
 static NSString *const kKeyLogToFile         = @"logToFile";
 static NSString *const kKeyTestAlertOnLoad   = @"testAlertOnLoad";
-static NSString *const kKeyDetectionMode    = @"detectionMode";
 static NSString *const kKeyPollInterval     = @"pollInterval";
-static NSString *const kKeyMessageStoreBackstop    = @"messageStoreBackstop";
-static NSString *const kKeyServiceSessionBackstop  = @"serviceSessionBackstop";
 
 static const NSTimeInterval kKSAReloadThrottle = 2.0;
 
@@ -462,10 +459,7 @@ static NSArray<NSString *> *KSAReadKeywordsFile(NSString *path)
         kKeyDebugEnabled:      @(KSABoolValue(raw, @"DebugEnabled", NO)),
         kKeyLogToFile:         @(KSABoolValue(raw, @"LogToFile", NO)),
         kKeyTestAlertOnLoad:   @(KSABoolValue(raw, @"TestAlertOnLoad", NO)),
-        kKeyDetectionMode:     KSAStringValue(raw, @"DetectionMode", nil).lowercaseString ?: @"db",
-        kKeyPollInterval:      @(KSAClamp(KSADoubleValue(raw, @"PollInterval", 1.5), 0.5, 30.0)),
-        kKeyMessageStoreBackstop:   @(KSABoolValue(raw, @"HookMessageStoreBackstop", NO)),
-        kKeyServiceSessionBackstop: @(KSABoolValue(raw, @"HookServiceSessionBackstop", NO)),
+        kKeyPollInterval:      @(KSAClamp(KSADoubleValue(raw, @"PollInterval", 1.0), 0.5, 30.0)),
     };
 }
 
@@ -508,14 +502,7 @@ static NSArray<NSString *> *KSAReadKeywordsFile(NSString *path)
 - (BOOL)debugEnabled { return [self._snapshot[kKeyDebugEnabled] boolValue]; }
 - (BOOL)logToFile { return [self._snapshot[kKeyLogToFile] boolValue]; }
 - (BOOL)testAlertOnLoad { return [self._snapshot[kKeyTestAlertOnLoad] boolValue]; }
-- (NSString *)detectionMode
-{
-    NSString *mode = self._snapshot[kKeyDetectionMode];
-    return [mode isEqualToString:@"hooks"] ? @"hooks" : @"db";
-}
 - (NSTimeInterval)pollInterval { return [self._snapshot[kKeyPollInterval] doubleValue]; }
-- (BOOL)messageStoreBackstop { return [self._snapshot[kKeyMessageStoreBackstop] boolValue]; }
-- (BOOL)serviceSessionBackstop { return [self._snapshot[kKeyServiceSessionBackstop] boolValue]; }
 
 - (NSString *)activeConfigPath
 {
