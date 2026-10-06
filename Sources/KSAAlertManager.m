@@ -6,6 +6,7 @@
 #import "KSAAlertManager.h"
 #import "KSACommon.h"
 #import "KSADedupCache.h"
+#import "KSAHookInstaller.h"
 #import "KSALog.h"
 #import "KSASoundConverter.h"
 #import "KSATrigger.h"
@@ -266,6 +267,16 @@ static const NSTimeInterval kKSASystemSoundRepeatInterval = 2.0;
 
     if (!config.enabled) {
         return;
+    }
+
+    // An alert is about to play, which is the only situation in which the power
+    // button has to be observable. This is where - and the only place where - the
+    // SpringBoard hooks get installed; at dylib load time nothing is hooked
+    // (see KSAHookInstaller.h). Calling it here keeps the feature identical while
+    // taking the tweak out of SpringBoard's early boot completely.
+    if (!KSAPowerButtonHooksInstalled()) {
+        KSAInfo(@"installing power button hooks now (first alert)");
+        KSAInstallPowerButtonHooksIfNeeded();
     }
 
     BOOL useVibration = config.vibrationEnabled;

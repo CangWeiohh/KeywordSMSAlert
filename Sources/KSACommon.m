@@ -128,3 +128,30 @@ void KSADispatchAsync(dispatch_queue_t queue, dispatch_block_t block)
     }
     dispatch_async(queue, block);
 }
+
+#pragma mark - Emergency kill switch
+
+NSString *KSASafeModeMarkerPath(void)
+{
+    // Deliberately the REAL rootfs path: it must be reachable by ssh/dpkg even when
+    // the jailbreak root changes, and SpringBoard runs as mobile which owns it.
+    return @"/var/mobile/Library/Preferences/com.keyword.smsalert.safemode";
+}
+
+BOOL KSASafeModeEnabled(void)
+{
+    static BOOL enabled = NO;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSFileManager *fileManager = [NSFileManager defaultManager];
+        if ([fileManager fileExistsAtPath:KSASafeModeMarkerPath()]) {
+            enabled = YES;
+        }
+        NSString *jailbreakCopy = KSAPathInJB(@"/var/mobile/Library/Preferences/com.keyword.smsalert.safemode");
+        if (!enabled && jailbreakCopy.length > 0 && [fileManager fileExistsAtPath:jailbreakCopy]) {
+            enabled = YES;
+        }
+    });
+    return enabled;
+}
+

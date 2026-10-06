@@ -239,13 +239,20 @@ IDLE ──匹配──▶ MATCHED ──▶ ALERTING ──(电源键/到时/�
 2. `SBLockHardwareButtonActions - (void)performInitialButtonDownActions` → `%orig` 后观测。
 3. `SBLockHardwareButton - (void)buttonDown:(id)press` → `%orig` 后观测（兜底）。
 4. `SBLockScreenManager -lockUIFromSource:withOptions:` / `-lockUIFromSource:` → 补充观测（锁屏路径）。
-5. 兜底发现式挂载：运行时枚举 `SBLockHardwareButton` / `SBHardwareButton` / `SBBacklightController` 的**真实方法列表**，
-   按键类选择器需含 `press` 且（`*Actions` 结尾 / `button*` 前缀 / `handlebutton*` 前缀），
-   背光类需含 `turnonbacklight` / `backlighton` / `setbacklighton`；
-   只有“返回 void、参数 ≤ 3 个且非浮点/结构体”的方法才挂载（arm64e 参数转发安全），
-   已被前 4 步精确挂载过的选择器自动跳过，其余跳过原因写入 Debug 日志。
+5. ~~兜底发现式挂载~~ —— **1.1.3 已删除**。它原先会在运行时枚举 `SBLockHardwareButton` / `SBHardwareButton` /
+   **`SBBacklightController`** 的真实方法列表，把名字匹配的**背光点亮类方法**也一并包一层。
+   对「电源键停止提醒」它并非必需，却正好落在「屏幕亮不亮」这条链路上：实机表现为
+   **单独装另一个同样在 dylib 加载时挂 hook 的 SpringBoard 插件时只是黑屏 1 秒；两个一起装就一直黑屏**。
+   现在只保留上面 1–4 这四条**逐个验证过、且都把原实现原样放行**的 hook。
 
 **稳定性约束（按调研结论执行）：**
+
+* **1.1.3 起：SpringBoard 启动期零 hook。** `%ctor` 只做「进程判定 + 读应急标记 + 异步启动提醒引擎」，一个 hook 都不装——
+  安装 hook（每次 `MSHookMessageEx` 都会让其他线程短暂挂起）恰恰是「用户空间重启」时 SpringBoard 早期最不该做的事。
+  上述四条 hook 改为**第一个提醒真正开始播放时才安装**（见 `Sources/KSAHookInstaller.h`）：功能完全不变（按压总是发生在提醒开始之后），
+  但本插件不再参与 SpringBoard 的启动过程。
+* 四条 hook 现在**全部**是「先执行原实现、再观察」，包括 `consumeInitialPressDown`（1.1.2 之前是"先观察再 `%orig`"），
+  因此即使与别的插件叠在同一条方法链上，本插件的存在也不会改变链的语义。
 
 * hook 体内只做一件事：投递到提醒引擎的串行队列（微秒级），**绝不在 SpringBoard 按键处理线程上做音频/AudioToolbox 拆卸**——RemoteCompanion 的 changelog 记录过“电源键变卡顿/延迟”的正是这类错误；
 * 无提醒时走最快路径：先看 `isAlerting`（原子读）直接返回，不读配置文件；
@@ -599,6 +606,19 @@ killall -9 imagent            # 让 imagent 重新启动
 dpkg -r com.keyword.smsalert && killall -9 imagent && sbreload
 ```
 
+**1.1.3 起还有一个更彻底的开关：`safemode`。** 只要这个标记文件存在，SpringBoard 里**一个 hook 都不装**
+（提醒照旧工作，只是电源键不再能停止它）——用来在黑屏/卡死时做隔离，不必卸载：
+
+```bash
+ksactl safemode on            # 创建 /var/mobile/Library/Preferences/com.keyword.smsalert.safemode
+killall -9 SpringBoard        # 或重启用户空间，让 SpringBoard 重新加载（此时不再装 hook）
+ksactl safemode status        # on / off
+ksactl safemode off           # 恢复（下次提醒时重新安装 hook）
+```
+
+> 注意：**`Enabled = false` 只关提醒，不关 hook**（安装 hook 与是否启用无关，1.1.3 起 hook 只在"第一个提醒开始时"才装，
+> 所以实际效果等价）。做隔离实验时请用上面的 `safemode` 或直接卸载。
+
 ### 14.2 检测方式（1.1.2 起默认无 Hook）
 
 | `DetectionMode` | 默认 | 机制 | 风险 / 代价 |
@@ -644,12 +664,12 @@ dpkg -r com.keyword.smsalert && killall -9 imagent && sbreload
    ```
    * 能查到这条 → 短信**已入库**，只是「信息」App 没显示（回到第 1 步，或看第 2 步的过滤）。
    * 查不到 → 说明它从未入库，而插件不写库（见上面的审计），此时要看是不是第三方过滤/运营商侧问题，或安装过程中 imagent 正在重启那 1–2 秒内到达（`postinst` 会重启 imagent）。
-4. **A/B 对照**（可选）：把两个兜底 Hook 关掉，只保留最贴近短信服务插件的那一路，然后重启 imagent 再复测：
+4. **A/B 对照**（可选）：1.1.1 起检测侧已经**没有任何 Hook 可关**（`DetectionMode` / `HookMessageStoreBackstop` /
+   `HookServiceSessionBackstop` 已全部删除，二进制里可 `strings | grep -c hooked` 验证为 0），所以现在的隔离手段是：
 
    ```bash
-   ksactl set HookMessageStoreBackstop false
-   ksactl set HookServiceSessionBackstop false
-   killall -9 imagent          # 或 ksactl restart
+   ksactl safemode on        # SpringBoard 侧一个 hook 都不装
+   dpkg -r com.keyword.smsalert && killall -9 imagent && killall -9 SpringBoard   # 彻底排除
    ```
    若问题依旧/消失都只是用来定位，不代表插件写数据（插件没有写数据的代码路径）。
 
@@ -659,3 +679,19 @@ dpkg -r com.keyword.smsalert && killall -9 imagent && sbreload
 * iMessage 支持：`IncludeIMessage = 1` 已预留通路（判定逻辑已实现）。
 * 电源键熄屏路径：按 §10 的探针确认是否已覆盖；若某 build 改名，据诊断日志补一个选择器即可。
 * 提醒时点亮屏幕 / 自定义来电级全屏提醒（需要额外风险评估，暂不做）。
+
+## 15. 版本记录
+
+| 版本 | 要点 |
+| --- | --- |
+| **1.1.3** | **启动期零 hook**：`%ctor` 不装任何 hook，电源键/锁屏 hook 改为「第一个提醒开始时」按需安装；**删除兜底发现式挂载**（不再碰 `SBBacklightController`，这是与其它 SpringBoard 插件共存时的黑屏诱因）；`consumeInitialPressDown` 改为先 `%orig` 再观察；新增 `ksactl safemode on/off/status` 应急开关（标记文件存在则一个 hook 都不装） |
+| 1.1.2 | `PollInterval` 改完立即生效（免重启）+ 加入设置面板「行为」分组（0.5–30 s，默认 1.0） |
+| 1.1.1 | 彻底删除 `hooks` 模式与 `DetectionMode` / `HookMessageStoreBackstop` / `HookServiceSessionBackstop`；配置文件不再作为 dpkg conffile（`postinst` 首次生成）→ 升级无提示、不覆盖 |
+| 1.1.0 | 检测改为**默认无 Hook 的只读轮询 sms.db**（修复真机「完全收不到短信」） |
+| 1.0.7 | 安全默认值：`Enabled = false` 时 imagent 侧零 Hook；补应急说明 |
+| 1.0.6 | `ksactl db`（只读查库）+ 兜底 Hook 开关 |
+| 1.0.5 | 声音列表点按试听 |
+| 1.0.4 | 修「选系统提示音不生效」（行标识误当配置键）+ m4r/mp3 自动转 CAF |
+| 1.0.3 | 铃声/提醒音量通道（`SoundChannel = alert`）+ 声音选择器 + `postinst` 自动重启 imagent |
+| 1.0.2 | 设置入口 `isController = 1` + `ksactl` 命令行兜底 |
+| 1.0.0 | 首版：双 dylib（imagent 检测 / SpringBoard 提醒 + 电源键） |

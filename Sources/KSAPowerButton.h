@@ -8,18 +8,21 @@
 //  button must stop it immediately - without polling, without taking over the
 //  button, and without breaking lock/wake.
 //
-//  How it is done:
-//    * the verified high level entry point
-//      -[SBLockScreenManager lockUIFromSource:withOptions:] is hooked in
-//      KeywordSMSAlert.xm (the original implementation always runs first, so
-//      locking keeps working);
-//    * additionally, at runtime, SpringBoard's own hardware-button action methods
-//      are *discovered* (class_copyMethodList) and hooked by pattern, so a press
-//      is caught even when the screen is off (press-to-wake does not go through
-//      lockUIFromSource:). Nothing is guessed at compile time: only selectors that
-//      actually exist at runtime are hooked, and every decision is logged.
+//  How it is done (1.1.3):
+//    * four verified methods are hooked with exact signatures in
+//      KeywordSMSAlertAlert.xm - SBLockScreenManager -lockUIFromSource:...,
+//      SBSleepWakeHardwareButtonInteraction -consumeInitialPressDown,
+//      SBLockHardwareButtonActions -performInitialButtonDownActions and
+//      SBLockHardwareButton -buttonDown:;
+//    * all four run the original implementation and keep its result, so lock /
+//      wake / SOS / Siri behaviour is untouched;
+//    * the hooks are installed LAZILY (first alert), never at dylib load time -
+//      see KSAHookInstaller.h;
+//    * this class only turns "a button event happened" into "stop the alert",
+//      which is a no-op unless an alert is actually playing.
 //
-//  No polling of any kind is used anywhere in this file.
+//  No polling and no runtime discovery/hooking of arbitrary selectors is used
+//  anywhere in this file.
 //
 
 #ifndef KSA_POWER_BUTTON_H
@@ -31,14 +34,13 @@
 
 + (instancetype)sharedInstance;
 
-/// Selectors that are already hooked (with exact signatures) by the Logos groups in
-/// KeywordSMSAlertAlert.xm. The discovery pass will not hook them a second time.
-/// Call before -startInSpringBoard.
-- (void)skipSelectorNames:(NSArray<NSString *> *)selectorNames;
+/// Called from the tweak constructor inside SpringBoard, AFTER the process check.
+/// Read-only: logs which button/lock/backlight selectors this build exposes when
+/// DebugEnabled = 1, and does it off the main thread. It never installs a hook.
+- (void)noteSpringBoardReady;
 
-/// Called from the tweak constructor inside SpringBoard. Installs the discovered
-/// hardware-button watchers and logs what was found.
-- (void)startInSpringBoard;
+/// Bookkeeping for the lazily installed hooks (KSAHookInstaller.h).
+- (void)noteWatcherInstalled:(NSString *)watcher;
 
 /// Hook entry point: a physical button event was observed. Thread safe.
 - (void)noteEvent:(NSString *)eventName;

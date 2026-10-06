@@ -123,6 +123,58 @@ static id KSAObjectForKey(NSDictionary *configuration, NSString *key)
     return nil;
 }
 
+/// Emergency kill switch. While the marker exists the tweak installs NO hook in
+/// SpringBoard at all (so the power button can no longer stop an alert, but the
+/// tweak can no longer influence the screen/lock/button path either). This makes it
+/// possible to bisect a black screen or a hang without uninstalling the package.
+static NSString *KSASafeModeRealPath(void)
+{
+    return @"/rootfs/var/mobile/Library/Preferences/com.keyword.smsalert.safemode";
+}
+
+static NSString *KSASafeModeJailbreakPath(void)
+{
+    return @"/var/mobile/Library/Preferences/com.keyword.smsalert.safemode";
+}
+
+static void KSACommandSafeMode(NSArray<NSString *> *arguments)
+{
+    NSString *action = arguments.count > 0 ? arguments[0].lowercaseString : @"status";
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSString *real = KSASafeModeRealPath();
+    NSString *jailbreak = KSASafeModeJailbreakPath();
+
+    if ([action isEqualToString:@"on"] || [action isEqualToString:@"enable"] ||
+        [action isEqualToString:@"1"] || [action isEqualToString:@"yes"]) {
+        NSData *data = [@"safemode\n" dataUsingEncoding:NSUTF8StringEncoding];
+        if (![data writeToFile:real atomically:YES]) {
+            printf("%scould not create %s%s\n", KSARed.UTF8String, real.UTF8String, KSAReset.UTF8String);
+            return;
+        }
+        printf("%ssafemode ON%s  marker: %s\n", KSAGreen.UTF8String, KSAReset.UTF8String, real.UTF8String);
+        printf("  the tweak now installs NO SpringBoard hook\n");
+        printf("  apply it with: killall -9 SpringBoard   (or restart userspace)\n");
+        return;
+    }
+
+    if ([action isEqualToString:@"off"] || [action isEqualToString:@"disable"] ||
+        [action isEqualToString:@"0"] || [action isEqualToString:@"no"]) {
+        for (NSString *path in @[real, jailbreak]) {
+            if ([fileManager fileExistsAtPath:path]) {
+                [fileManager removeItemAtPath:path error:NULL];
+                printf("  removed %s\n", path.UTF8String);
+            }
+        }
+        printf("safemode OFF (hooks are installed again with the next alert / after a restart)\n");
+        return;
+    }
+
+    BOOL on = [fileManager fileExistsAtPath:real] || [fileManager fileExistsAtPath:jailbreak];
+    printf("safemode : %s\n", on ? "ON  (no SpringBoard hook)" : "off");
+    printf("  real rootfs : %-7s %s\n", [fileManager fileExistsAtPath:real] ? "present" : "absent", real.UTF8String);
+    printf("  jailbreak   : %-7s %s\n", [fileManager fileExistsAtPath:jailbreak] ? "present" : "absent", jailbreak.UTF8String);
+}
+
 static void KSAPrintUsage(void)
 {
     printf("ksactl - KeywordSMSAlert helper\n\n"
@@ -137,7 +189,8 @@ static void KSAPrintUsage(void)
            "  ksactl test                       fire a test alert now\n"
            "  ksactl reload                     ask the tweak to reload the file\n"
            "  ksactl restart                    restart imagent + SpringBoard (apply an update)\n"
-           "  ksactl db [n]                     list the newest n SMS from sms.db (READ ONLY)\n\n"
+           "  ksactl db [n]                     list the newest n SMS from sms.db (READ ONLY)\n"
+           "  ksactl safemode [on|off|status]   emergency: install NO SpringBoard hook\n\n"
            "Common keys: Enabled AlertMode Keywords MatchMode VibrationDuration SoundDuration\n"
            "             SoundVolume DuplicateInterval DebugEnabled LogToFile TestAlertOnLoad\n");
 }
@@ -433,6 +486,8 @@ int main(int argc, char *argv[])
         } else if ([command isEqualToString:@"reload"]) {
             KSAPostNotification(KSAReloadNotification);
             printf("reload requested\n");
+        } else if ([command isEqualToString:@"safemode"]) {
+            KSACommandSafeMode(parameters);
         } else {
             KSAPrintUsage();
             return [command isEqualToString:@"help"] || [command isEqualToString:@"-h"] ? 0 : 1;
