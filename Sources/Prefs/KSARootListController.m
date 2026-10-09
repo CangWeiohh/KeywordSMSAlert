@@ -312,16 +312,17 @@ static NSString *const KSATriggerNotificationName = @"com.keyword.smsalert.trigg
 {
     NSString *path = @"/var/mobile/Library/Preferences/com.keyword.smsalert.runtime.plist";
     NSDictionary *status = [NSDictionary dictionaryWithContentsOfFile:path];
-    if (![status[@"DaemonRunning"] boolValue]) {
+    BOOL running = [status[@"DaemonRunning"] boolValue] || [status[@"AlertEngineReady"] boolValue];
+    if (!running) {
         return KSAPrefsLocalized(@"RuntimeNotRunning");
     }
-    if (status[@"LastPowerButtonAt"] != nil) {
+    if ([status[@"FallbackStopActive"] boolValue]) {
+        return KSAPrefsLocalized(@"RuntimeStopRegistered");
+    }
+    if (status[@"LastTriggerAt"] != nil) {
         return KSAPrefsLocalized(@"RuntimePowerDetected");
     }
-    if ([status[@"HIDAvailable"] boolValue]) {
-        return KSAPrefsLocalized(@"RuntimeReady");
-    }
-    return KSAPrefsLocalized(@"RuntimeHIDUnavailable");
+    return KSAPrefsLocalized(@"RuntimeReady");
 }
 
 - (void)ksaWriteText:(id)value specifier:(PSSpecifier *)specifier

@@ -34,6 +34,13 @@
 #import "KSALog.h"
 #import "KSASMSDetector.h"
 #import "KSASMSWatcher.h"
+#import "KSATrigger.h"
+
+#ifdef KSA_ALERT_IN_DETECTOR
+#import "KSAAlertManager.h"
+#import "Daemon/KSADisplayStateStop.h"
+#import "Daemon/KSARuntimeStatus.h"
+#endif
 
 %ctor
 {
@@ -57,6 +64,31 @@
 
         KSAInfo(@"detection: read only SMS database polling every %.1fs (no hooks in imagent)",
                 config.pollInterval);
+
+#ifdef KSA_ALERT_IN_DETECTOR
+        // 1.2.0: the alert engine runs here, in imagent. No SpringBoard injection and
+        // no launchd service - on this device both of those reproduced the CallAssist
+        // userspace-reboot black screen.
+        KSARuntimeStatusReset();
+        [[KSAAlertManager sharedInstance] start];
+        [[KSADisplayStateStop sharedInstance] start];
+        KSAInfo(@"alert engine hosted in imagent (vibration + alert channel sound)");
+
+        if (config.testAlertOnLoad) {
+            KSAInfo(@"TestAlertOnLoad is enabled: firing a test alert in 3 seconds");
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{
+                KSAMatchEvent *event = [[KSAMatchEvent alloc] init];
+                event.source = @"imagent self test";
+                event.text = @"KeywordSMSAlert self test";
+                event.keyword = @"self test";
+                [[KSAAlertManager sharedInstance] handleMatchEvent:event];
+            });
+        }
+#else
+        KSATriggerPost();
+#endif
+
         [[KSASMSWatcher sharedInstance] start];
     }
 }

@@ -15,8 +15,10 @@
 #import "Daemon/KSARuntimeStatus.h"
 #endif
 
-#import <AVFoundation/AVFoundation.h>
 #import <AudioToolbox/AudioToolbox.h>
+#ifndef KSA_NO_MEDIA_CHANNEL
+#import <AVFoundation/AVFoundation.h>
+#endif
 
 /// Hard safety cap: an alert can never stay alive longer than this, whatever the
 /// configuration file says. Prevents a stuck timer from keeping the device awake.
@@ -42,7 +44,11 @@ static const NSTimeInterval kKSASystemSoundRepeatInterval = 2.0;
 
 #pragma mark - KSAAlertManager
 
+#ifdef KSA_NO_MEDIA_CHANNEL
+@interface KSAAlertManager ()
+#else
 @interface KSAAlertManager () <AVAudioPlayerDelegate>
+#endif
 @property (atomic, assign) KSAAlertState state;
 @end
 
@@ -63,10 +69,14 @@ static const NSTimeInterval kKSASystemSoundRepeatInterval = 2.0;
     SystemSoundID _alertSoundID;            // > 0 while the alert channel is playing
     dispatch_source_t _endTimer;            // overall safety/lifetime timer
 
+#ifdef KSA_NO_MEDIA_CHANNEL
+    id _player;                        // always nil: media channel not compiled in
+#else
     AVAudioPlayer *_player;
     NSString *_previousAudioCategory;
     NSString *_previousAudioMode;
     BOOL _audioSessionActivatedByUs;
+#endif
 }
 
 + (instancetype)sharedInstance
@@ -135,10 +145,12 @@ static const NSTimeInterval kKSASystemSoundRepeatInterval = 2.0;
         }
     });
 
+#ifndef KSA_NO_MEDIA_CHANNEL
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(_audioSessionInterruption:)
                                                  name:AVAudioSessionInterruptionNotification
                                                object:nil];
+#endif
 
     KSAConfig *config = [KSAConfig sharedInstance];
     KSAInfo(@"alert engine ready (process %@, sound channel %@, sound file %@)",
@@ -149,6 +161,7 @@ static const NSTimeInterval kKSASystemSoundRepeatInterval = 2.0;
 #endif
 }
 
+#ifndef KSA_NO_MEDIA_CHANNEL
 - (void)_audioSessionInterruption:(NSNotification *)notification
 {
     NSNumber *type = notification.userInfo[AVAudioSessionInterruptionTypeKey];
@@ -157,6 +170,7 @@ static const NSTimeInterval kKSASystemSoundRepeatInterval = 2.0;
     }
     [self stopAlertWithReason:@"audio interruption"];
 }
+#endif
 
 #pragma mark - Public entry points (thread safe)
 
@@ -376,6 +390,11 @@ static const NSTimeInterval kKSASystemSoundRepeatInterval = 2.0;
 /// Length of the sound file, used to repeat it seamlessly on the alert channel.
 - (NSTimeInterval)_durationOfSoundFileAtPath:(NSString *)path
 {
+#ifdef KSA_NO_MEDIA_CHANNEL
+    // The alert channel repeats on a fixed interval in this build; no probe needed.
+    (void)path;
+    return 0.0;
+#else
     NSError *error = nil;
     AVAudioPlayer *probe = [[AVAudioPlayer alloc] initWithContentsOfURL:[NSURL fileURLWithPath:path]
                                                                   error:&error];
@@ -384,6 +403,7 @@ static const NSTimeInterval kKSASystemSoundRepeatInterval = 2.0;
         return 0.0;
     }
     return duration + 0.25;
+#endif
 }
 
 - (BOOL)_startAlertChannelSoundOnQueue:(KSAConfig *)config path:(NSString *)path
@@ -606,6 +626,13 @@ static const NSTimeInterval kKSASystemSoundRepeatInterval = 2.0;
         return;
     }
 
+#ifdef KSA_NO_MEDIA_CHANNEL
+    // This build links AudioToolbox only: the alert (ringer) channel above is the
+    // only sound path. Nothing to do if it was rejected.
+    KSAInfo(@"media channel is not part of this build; alert channel unavailable for %@",
+            path.lastPathComponent);
+    return;
+#else
     [self _configureAudioSessionWithError:NULL];
 
     NSError *error = nil;
@@ -640,8 +667,10 @@ static const NSTimeInterval kKSASystemSoundRepeatInterval = 2.0;
 
     KSADebug(@"sound started (%@, %.1fs, volume %.2f, loop=%d)",
              path.lastPathComponent, duration, config.soundVolume, config.soundLoop);
+#endif
 }
 
+#ifndef KSA_NO_MEDIA_CHANNEL
 - (void)_configureAudioSessionWithError:(NSError **)errorOut
 {
     // A dedicated playback session is used so the alert is audible even with the
@@ -696,6 +725,7 @@ static const NSTimeInterval kKSASystemSoundRepeatInterval = 2.0;
     _previousAudioCategory = nil;
     _previousAudioMode = nil;
 }
+#endif
 
 #pragma mark - Teardown
 
@@ -704,6 +734,7 @@ static const NSTimeInterval kKSASystemSoundRepeatInterval = 2.0;
     _vibrationRunning = NO;
     [self _stopAlertChannelSoundOnQueue];
 
+#ifndef KSA_NO_MEDIA_CHANNEL
     if (_player != nil) {
         @try {
             [_player stop];
@@ -715,8 +746,10 @@ static const NSTimeInterval kKSASystemSoundRepeatInterval = 2.0;
     }
 
     [self _restoreAudioSessionOnQueue];
+#endif
 }
 
+#ifndef KSA_NO_MEDIA_CHANNEL
 #pragma mark - AVAudioPlayerDelegate
 
 - (void)audioPlayerDidFinishPlaying:(AVAudioPlayer *)player successfully:(BOOL)flag
@@ -732,5 +765,6 @@ static const NSTimeInterval kKSASystemSoundRepeatInterval = 2.0;
         [self _stopOnQueueWithReason:@"sound finished"];
     });
 }
+#endif
 
 @end

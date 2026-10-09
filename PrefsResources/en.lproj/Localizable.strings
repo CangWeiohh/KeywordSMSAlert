@@ -47,8 +47,9 @@
 "LogToFile" = "Also write a log file";
 "RuntimeStatus" = "Alert service status";
 "RuntimeNotRunning" = "Not running";
-"RuntimeReady" = "Running · power observer registered";
-"RuntimePowerDetected" = "Running · power button captured";
+"RuntimeReady" = "Running · alert engine inside imagent";
+"RuntimeStopRegistered" = "Running · power-button stop registered (screen state)";
+"RuntimePowerDetected" = "Running · an alert has fired";
 "RuntimeHIDUnavailable" = "Running · power observer unavailable";
 "TestAlertOnLoad" = "Test alert 3s after the alert service starts";
 "TestAlertNow" = "Test the alert now";

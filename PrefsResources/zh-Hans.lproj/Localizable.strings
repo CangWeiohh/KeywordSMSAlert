@@ -47,8 +47,9 @@
 "LogToFile" = "同时写入日志文件";
 "RuntimeStatus" = "提醒服务状态";
 "RuntimeNotRunning" = "未启动";
-"RuntimeReady" = "已启动 · 电源键监听已注册";
-"RuntimePowerDetected" = "已启动 · 已捕获过电源键";
+"RuntimeReady" = "已启动 · 提醒引擎在 imagent 内";
+"RuntimeStopRegistered" = "已启动 · 电源键停止已注册（屏幕状态监听）";
+"RuntimePowerDetected" = "已启动 · 已触发过提醒";
 "RuntimeHIDUnavailable" = "已启动 · 电源键监听不可用";
 "TestAlertOnLoad" = "提醒服务启动 3 秒后测试提醒";
 "TestAlertNow" = "立即测试提醒";

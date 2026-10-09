@@ -8,6 +8,9 @@
 #import "KSAConfig.h"
 #import "KSADedupCache.h"
 #import "KSALog.h"
+#ifdef KSA_ALERT_IN_DETECTOR
+#import "KSAAlertManager.h"
+#endif
 #import "KSATrigger.h"
 
 #import <CoreFoundation/CoreFoundation.h>
@@ -435,11 +438,24 @@ static NSString *KSAMessageItemText(id item)
     _matchedCount++;
     [_statsLock unlock];
 
-    KSAInfo(@"keyword matched (keyword hash=%@), notifying alert process",
-            KSAHashString(matched));
     KSADebugSensitive(@"matched keyword: %@", matched);
 
+#ifdef KSA_ALERT_IN_DETECTOR
+    // The alert engine is part of this dylib: hand the match over in-process instead
+    // of waking another process.
+    KSAInfo(@"keyword matched (keyword hash=%@), starting alert in imagent",
+            KSAHashString(matched));
+    KSAMatchEvent *event = [[KSAMatchEvent alloc] init];
+    event.source = source ?: @"imagent";
+    event.text = text;
+    event.sender = sender;
+    event.keyword = matched;
+    [[KSAAlertManager sharedInstance] handleMatchEvent:event];
+#else
+    KSAInfo(@"keyword matched (keyword hash=%@), notifying alert process",
+            KSAHashString(matched));
     KSATriggerPost();
+#endif
 }
 
 - (void)_recordHookHit:(NSString *)source
