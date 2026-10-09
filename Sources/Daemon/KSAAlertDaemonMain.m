@@ -20,7 +20,7 @@ int main(int argc, char *argv[])
         signal(SIGPIPE, SIG_IGN);
 
         KSARuntimeStatusReset();
-        KSARuntimeStatusUpdate(@{ @"Version": @"1.1.4" });
+        KSARuntimeStatusUpdate(@{ @"Version": @"1.1.5" });
 
         // Load persisted preferences before evaluating TestAlertOnLoad. The shared
         // manager reloads once more on its own queue, which is harmless and keeps the

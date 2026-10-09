@@ -101,11 +101,32 @@ fi
 chmod 755 /usr/libexec/ksaalertd 2>/dev/null || true
 chmod 644 /Library/LaunchDaemons/com.keyword.smsalert.alertd.plist 2>/dev/null || true
 
+# launchd is Apple's own binary: it is NOT patched by libvroot, so a bare
+# "/usr/libexec/ksaalertd" would be looked up on the read-only real rootfs and the
+# daemon would never start. The shipped plist therefore contains the placeholder
+# @JBROOT@ and we substitute the absolute (randomised) jailbreak root here - the same
+# thing roothide does for its own com.roothide.bootstrap.bootstrapd.plist.
+DAEMON_PLIST=/Library/LaunchDaemons/com.keyword.smsalert.alertd.plist
+if command -v jbroot >/dev/null 2>&1; then
+	JBROOT_ABS="$(jbroot)"
+else
+	JBROOT_ABS=""
+fi
+if [ -n "$JBROOT_ABS" ] && [ -f "$DAEMON_PLIST" ]; then
+	sed -i "s|@JBROOT@|$JBROOT_ABS|g" "$DAEMON_PLIST" 2>/dev/null || true
+fi
+
+if grep -q '@JBROOT@' "$DAEMON_PLIST" 2>/dev/null; then
+	echo "KeywordSMSAlert: WARNING - could not resolve @JBROOT@ in the daemon plist;"
+	echo "KeywordSMSAlert:   the alert service may not start until the next userspace restart."
+fi
+
 # Best-effort hot activation. If this bootstrap's launchctl rejects bootstrap during
-# dpkg, the job is still loaded automatically by the next userspace restart.
+# dpkg, the job is still loaded automatically by the next userspace restart (bsctl
+# runs 'launchctl bootstrap system /Library/LaunchDaemons' at startup).
 if command -v launchctl >/dev/null 2>&1; then
 	launchctl bootout system/com.keyword.smsalert.alertd 2>/dev/null || true
-	launchctl bootstrap system /Library/LaunchDaemons/com.keyword.smsalert.alertd.plist 2>/dev/null || true
+	launchctl bootstrap system "$DAEMON_PLIST" 2>/dev/null || true
 	launchctl kickstart -k system/com.keyword.smsalert.alertd 2>/dev/null || true
 fi
 

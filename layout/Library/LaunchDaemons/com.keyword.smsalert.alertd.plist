@@ -6,7 +6,7 @@
 	<string>com.keyword.smsalert.alertd</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>/usr/libexec/ksaalertd</string>
+		<string>@JBROOT@/usr/libexec/ksaalertd</string>
 	</array>
 	<key>RunAtLoad</key>
 	<true/>
