@@ -51,9 +51,58 @@
             return;
         }
 
-        KSAInfo(@"detector loaded into %@ (pid %d) - hook free detector",
-                KSAProcessName(), getpid());
+        KSAInfo(@"detector loaded into %@ (pid %d) - hook free detector", KSAProcessName(), getpid());
 
+#ifdef KSA_ALERT_IN_DETECTOR
+        // ---------------------------------------------------------------------
+        // BOOT-QUIET START (1.2.5)
+        //
+        // A userspace restart injects this dylib while imagent - and the rest of the
+        // system - are still coming up. Everything below is therefore deferred: during
+        // the boot window this plugin performs no work at all beyond being loaded.
+        // That keeps its boot profile as close as possible to the detector-only build
+        // that was confirmed to reboot cleanly on this device.
+        // ---------------------------------------------------------------------
+        static const int64_t kKSABootQuietDelaySeconds = 10;
+        KSAInfo(@"deferring all plugin work by %llds so the boot sequence is untouched",
+                kKSABootQuietDelaySeconds);
+
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
+                                      kKSABootQuietDelaySeconds * NSEC_PER_SEC),
+                       dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+            @autoreleasepool {
+                KSAConfig *config = [KSAConfig sharedInstance];
+                [config forceReload];
+
+                if (!config.enabled) {
+                    KSAInfo(@"plugin disabled (Enabled=false): nothing is polled or alerted");
+                    return;
+                }
+
+                KSARuntimeStatusReset();
+                [[KSAAlertManager sharedInstance] start];
+                [[KSADisplayStateStop sharedInstance] start];
+                [[KSASMSDetector sharedInstance] start];
+                [[KSASMSWatcher sharedInstance] start];
+
+                KSAInfo(@"detection active: read only SMS database polling every %.1fs "
+                        @"(no hooks in imagent)", config.pollInterval);
+                KSAInfo(@"alert engine hosted in imagent (vibration + alert channel sound)");
+
+                if (config.testAlertOnLoad) {
+                    KSAInfo(@"TestAlertOnLoad is enabled: firing a test alert in 3 seconds");
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)),
+                                   dispatch_get_main_queue(), ^{
+                        KSAMatchEvent *event = [[KSAMatchEvent alloc] init];
+                        event.source = @"imagent self test";
+                        event.text = @"KeywordSMSAlert self test";
+                        event.keyword = @"self test";
+                        [[KSAAlertManager sharedInstance] handleMatchEvent:event];
+                    });
+                }
+            }
+        });
+#else
         [[KSASMSDetector sharedInstance] start];
 
         KSAConfig *config = [KSAConfig sharedInstance];
@@ -64,31 +113,8 @@
 
         KSAInfo(@"detection: read only SMS database polling every %.1fs (no hooks in imagent)",
                 config.pollInterval);
-
-#ifdef KSA_ALERT_IN_DETECTOR
-        // 1.2.0: the alert engine runs here, in imagent. No SpringBoard injection and
-        // no launchd service - on this device both of those reproduced the CallAssist
-        // userspace-reboot black screen.
-        KSARuntimeStatusReset();
-        [[KSAAlertManager sharedInstance] start];
-        [[KSADisplayStateStop sharedInstance] start];
-        KSAInfo(@"alert engine hosted in imagent (vibration + alert channel sound)");
-
-        if (config.testAlertOnLoad) {
-            KSAInfo(@"TestAlertOnLoad is enabled: firing a test alert in 3 seconds");
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)),
-                           dispatch_get_main_queue(), ^{
-                KSAMatchEvent *event = [[KSAMatchEvent alloc] init];
-                event.source = @"imagent self test";
-                event.text = @"KeywordSMSAlert self test";
-                event.keyword = @"self test";
-                [[KSAAlertManager sharedInstance] handleMatchEvent:event];
-            });
-        }
-#else
         KSATriggerPost();
-#endif
-
         [[KSASMSWatcher sharedInstance] start];
+#endif
     }
 }

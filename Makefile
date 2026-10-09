@@ -50,7 +50,7 @@ export TARGET = iphone:clang:latest:15.4
 # roothide support that ships with roothide/theos (vendor/mod/roothide).
 THEOS_PACKAGE_SCHEME = roothide
 
-PACKAGE_VERSION = 1.2.4
+PACKAGE_VERSION = 1.2.5
 
 KSA_BUILD_VARIANT ?= imagent
 
