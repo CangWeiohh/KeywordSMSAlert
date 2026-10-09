@@ -55,6 +55,8 @@ PACKAGE_VERSION = 1.1.4~diag1
 KSA_ALERT_VARIANT_CFLAGS = -DKSA_DIAGNOSTIC_NO_HOOKS=1
 else ifeq ($(KSA_BUILD_VARIANT),no-springboard)
 PACKAGE_VERSION = 1.1.4~diag2
+else ifeq ($(KSA_BUILD_VARIANT),minimal-springboard)
+PACKAGE_VERSION = 1.1.4~diag3
 endif
 
 include $(THEOS)/makefiles/common.mk
@@ -71,6 +73,8 @@ KSA_CFLAGS = -fobjc-arc -I$(THEOS_PROJECT_DIR)/Sources -Wno-unused-parameter
 
 ifeq ($(KSA_BUILD_VARIANT),no-springboard)
 TWEAK_NAME = KeywordSMSAlertDetector
+else ifeq ($(KSA_BUILD_VARIANT),minimal-springboard)
+TWEAK_NAME = KeywordSMSAlertDetector KeywordSMSAlertSpringBoardProbe
 else
 TWEAK_NAME = KeywordSMSAlertDetector KeywordSMSAlertAlert
 endif
@@ -87,6 +91,16 @@ KeywordSMSAlertDetector_FRAMEWORKS = Foundation CoreFoundation
 # jbroot() comes from libroothide.dylib (roothide API, see roothide/Developer).
 KeywordSMSAlertDetector_LIBRARIES = sqlite3
 KeywordSMSAlertDetector_LDFLAGS = -lroothide
+
+# ------------------------------------------------ minimal SpringBoard probe ---
+# Diagnostic C: one inert constructor, no API calls, no AVFoundation/AudioToolbox,
+# no observers, no dispatch queues and no hooks.  (The tweak target retains Theos'
+# baseline Foundation/CoreFoundation load commands, but the probe never calls them.)
+# It answers whether merely adding another SpringBoard dylib conflicts with
+# CallAssist, independently of all alert-engine code.
+KeywordSMSAlertSpringBoardProbe_FILES = Sources/KeywordSMSAlertSpringBoardProbe.m
+KeywordSMSAlertSpringBoardProbe_CFLAGS = -fobjc-arc -Wno-unused-parameter
+KeywordSMSAlertSpringBoardProbe_LDFLAGS = -lroothide
 
 # ------------------------------------------------------------------- alert ---
 KeywordSMSAlertAlert_FILES = \
@@ -146,6 +160,8 @@ ifeq ($(KSA_BUILD_VARIANT),no-hooks)
 THEOS_PACKAGE_NAME = KeywordSMSAlert_DiagnosticA_NoHooks
 else ifeq ($(KSA_BUILD_VARIANT),no-springboard)
 THEOS_PACKAGE_NAME = KeywordSMSAlert_DiagnosticB_NoSpringBoard
+else ifeq ($(KSA_BUILD_VARIANT),minimal-springboard)
+THEOS_PACKAGE_NAME = KeywordSMSAlert_DiagnosticC_MinimalSpringBoard
 else
 THEOS_PACKAGE_NAME = KeywordSMSAlert
 endif
