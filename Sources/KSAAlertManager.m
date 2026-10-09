@@ -50,6 +50,7 @@ static const NSTimeInterval kKSASystemSoundRepeatInterval = 2.0;
 @interface KSAAlertManager () <AVAudioPlayerDelegate>
 #endif
 @property (atomic, assign) KSAAlertState state;
+@property (atomic, assign) NSTimeInterval lastAlertStartedAt;
 @end
 
 @implementation KSAAlertManager
@@ -347,6 +348,7 @@ static const NSTimeInterval kKSASystemSoundRepeatInterval = 2.0;
     }];
 
     [self _setStateOnQueue:KSAAlertStateAlerting];
+    self.lastAlertStartedAt = [[NSDate date] timeIntervalSince1970];
     KSAInfo(@"alert started (lifetime %.1fs)", lifetime);
 #ifdef KSA_STANDALONE_ALERTD
     KSARuntimeStatusUpdate(@{
@@ -589,7 +591,15 @@ static const NSTimeInterval kKSASystemSoundRepeatInterval = 2.0;
             // 2) ... otherwise convert (m4r ringtones, mp3, compressed CAF, ...) to a
             //    PCM CAF and use that, so the chosen sound is still heard at the
             //    ringer volume instead of falling back to the (possibly mute) media path.
-            NSString *converted = KSAPCMCopyOfSoundFileInDirectory(path, KSAPathInJB(@"/Library/KeywordSMSAlert"));
+            // Cache the conversion where this process can actually write it: imagent may not
+            // be able to create files inside the jailbreak root, but /var/mobile/Library
+            // is where its own configuration lives.
+            NSString *cacheDirectory = @"/var/mobile/Library/KeywordSMSAlert";
+            [[NSFileManager defaultManager] createDirectoryAtPath:cacheDirectory
+                                      withIntermediateDirectories:YES
+                                                       attributes:nil
+                                                            error:NULL];
+            NSString *converted = KSAPCMCopyOfSoundFileInDirectory(path, cacheDirectory);
             if (converted.length > 0 &&
                 [self _startAlertChannelSoundOnQueue:config path:converted]) {
                 if (![converted isEqualToString:path]) {

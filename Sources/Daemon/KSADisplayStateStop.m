@@ -5,9 +5,17 @@
 #import "KSADisplayStateStop.h"
 #import "KSARuntimeStatus.h"
 #import "KSAAlertManager.h"
+#import "KSACommon.h"
 #import "KSALog.h"
 
 #import <notify.h>
+
+/// A screen wake that happens right after an alert starts is almost always the
+/// incoming SMS notification lighting the lock screen - not the user pressing the
+/// power button. Wakes inside this window are therefore ignored; the power button can
+/// still stop the alert by turning the screen OFF (which is unambiguous), so a user
+/// who presses the button while the screen is dark only has to press it twice.
+static const NSTimeInterval kKSAScreenWakeGrace = 4.0;
 
 @implementation KSADisplayStateStop
 {
@@ -16,6 +24,8 @@
     int _lockToken;
     BOOL _haveDisplayState;
     uint64_t _lastDisplayState;
+    BOOL _haveLockState;
+    uint64_t _lastLockState;
 }
 
 + (instancetype)sharedInstance
@@ -92,16 +102,43 @@
     }
     _lastDisplayState = state;
 
-    [self ksa_stopIfAlertingWithReason:
-     [NSString stringWithFormat:@"display %@", state == 1 ? @"turned on" : @"turned off"]];
+    if (state == 1) {
+        // Screen turned ON. This is either the user pressing the power button on a
+        // sleeping phone, or the SMS notification waking the lock screen. Ignore the
+        // notification case (a wake close to the alert start).
+        NSTimeInterval startedAt = [KSAAlertManager sharedInstance].lastAlertStartedAt;
+        NSTimeInterval sinceStart = startedAt > 0 ? (KSANow() - startedAt) : -1;
+        if (sinceStart >= 0 && sinceStart < kKSAScreenWakeGrace) {
+            KSAInfo(@"screen turned on %.1fs after the alert started - treating it as the "
+                    @"incoming notification, alert continues (press power again to stop)",
+                    sinceStart);
+            return;
+        }
+        [self ksa_stopIfAlertingWithReason:@"screen turned on (power button)"];
+        return;
+    }
+
+    // Screen turned OFF: locking is unambiguous, and it is what a power press does
+    // while the screen is already on.
+    [self ksa_stopIfAlertingWithReason:@"screen turned off (power button)"];
 }
 
 - (void)ksa_lockStateChanged:(uint64_t)state
 {
-    if (state != 1) {
+    if (!_haveLockState) {
+        _haveLockState = YES;
+        _lastLockState = state;
         return;
     }
-    [self ksa_stopIfAlertingWithReason:@"device locked"];
+    if (state == _lastLockState) {
+        return;
+    }
+    _lastLockState = state;
+
+    if (state != 1) {
+        return;   // unlocked
+    }
+    [self ksa_stopIfAlertingWithReason:@"device locked (power button)"];
 }
 
 - (void)ksa_stopIfAlertingWithReason:(NSString *)reason

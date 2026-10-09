@@ -14,6 +14,14 @@ chown -R mobile:mobile /Library/KeywordSMSAlert 2>/dev/null || true
 chmod 755 /Library/KeywordSMSAlert 2>/dev/null || true
 chmod 644 /Library/KeywordSMSAlert/alert.caf 2>/dev/null || true
 
+# Shared sound directory on the REAL rootfs (/rootfs = the non-jailbreak root):
+# the Settings pane converts a chosen ringtone into a 16 bit PCM CAF here, and the
+# alert engine inside imagent reads it from here. imagent cannot be assumed to reach
+# the jailbreak root, but /var/mobile/Library is where its own configuration lives.
+mkdir -p /rootfs/var/mobile/Library/KeywordSMSAlert 2>/dev/null || true
+chown -R mobile:mobile /rootfs/var/mobile/Library/KeywordSMSAlert 2>/dev/null || true
+chmod 755 /rootfs/var/mobile/Library/KeywordSMSAlert 2>/dev/null || true
+
 # Create the configuration once, and never touch it again.
 #
 # It is deliberately NOT shipped as a dpkg conffile: that is what made every upgrade

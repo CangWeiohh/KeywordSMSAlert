@@ -32,6 +32,7 @@ typedef NS_ENUM(NSInteger, KSAAlertState) {
 @property (nonatomic, copy) NSString *identity;
 /// Free form origin tag used for logging ("sms-dict", "trigger", "test", ...).
 @property (nonatomic, copy) NSString *source;
+
 @end
 
 @interface KSAAlertManager : NSObject
@@ -56,6 +57,11 @@ typedef NS_ENUM(NSInteger, KSAAlertState) {
 - (BOOL)isAlerting;
 
 - (KSAAlertState)state;
+
+/// Wall-clock time the most recent alert started (0 when none has run yet). Used by
+/// the display-state stop source to tell the SMS notification waking the lock screen
+/// apart from a real power-button press.
+@property (atomic, readonly) NSTimeInterval lastAlertStartedAt;
 
 @end
 

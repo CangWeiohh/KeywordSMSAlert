@@ -271,7 +271,27 @@ static const NSUInteger KSASoundPickerMaxDepth = 4;
     }
 
     KSAPrefsStore *store = [KSAPrefsStore sharedStore];
-    [store setString:path forKey:[self ksaConfigurationKey]];
+
+    // The alert engine runs inside imagent, whose sandbox cannot be assumed to reach
+    // /Library/Ringtones or the jailbreak root. Convert the choice HERE, in the
+    // Settings process (which can read the ringtones), and store the converted 16 bit
+    // PCM CAF in /var/mobile/Library/KeywordSMSAlert - a directory imagent reads
+    // (it is where the configuration itself lives) - so the selected sound really is
+    // the sound that plays.
+    NSString *storedPath = path;
+    if (!KSASoundFileSupportsAlertChannel(path)) {
+        NSString *libraryDirectory = @"/var/mobile/Library/KeywordSMSAlert";
+        [[NSFileManager defaultManager] createDirectoryAtPath:libraryDirectory
+                                  withIntermediateDirectories:YES
+                                                   attributes:nil
+                                                        error:NULL];
+        NSString *converted = KSAPCMCopyOfSoundFileInDirectory(path, libraryDirectory);
+        if (converted.length > 0) {
+            storedPath = converted;
+        }
+    }
+
+    [store setString:storedPath forKey:[self ksaConfigurationKey]];
     [store save];
     if ([self.parentController isKindOfClass:[PSListController class]]) {
         [(PSListController *)self.parentController reloadSpecifiers];
