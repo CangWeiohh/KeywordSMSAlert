@@ -575,6 +575,12 @@ static const NSTimeInterval kKSASystemSoundRepeatInterval = 2.0;
 - (void)_startSoundOnQueue:(KSAConfig *)config
 {
     NSString *path = [config resolvedSoundPath];
+#ifdef KSA_STANDALONE_ALERTD
+    // No-terminal diagnostic: record which file the engine really picked, so the
+    // Settings pane can show it (this is how the "chosen ringtone silently ignored"
+    // class of bug becomes visible).
+    KSARuntimeStatusUpdate(@{ @"LastSoundFile": path ?: @"(none)" });
+#endif
     NSTimeInterval duration = MAX(config.soundDuration, 0.1);
     __weak typeof(self) weakSelf = self;
 

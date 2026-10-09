@@ -186,11 +186,23 @@ static const NSUInteger KSASoundPickerMaxDepth = 4;
 
 #pragma mark - Playable copy
 
-/// Directory the alert engine (imagent) can definitely read: it is where its own
-/// configuration lives, and it is on the real rootfs rather than in the jailbreak root.
+/// Where the converted sound must live.
+///
+/// This MUST be the directory that holds the configuration file: that is the one
+/// location we have hard evidence both processes can reach. The Settings pane writes
+/// /var/mobile/Library/Preferences/com.keyword.smsalert.plist there and the alert
+/// engine (inside imagent) reads it back, while a sibling directory such as
+/// /var/mobile/Library/KeywordSMSAlert is NOT readable by imagent's sandbox - putting
+/// the sound there made the engine silently fall back to the bundled default sound.
 static NSString *KSASoundPickerPlayableDirectory(void)
 {
-    return @"/var/mobile/Library/KeywordSMSAlert";
+    return @"/var/mobile/Library/Preferences";
+}
+
+/// Stable file name, deliberately next to com.keyword.smsalert.plist.
+static NSString *KSASoundPickerPlayableName(void)
+{
+    return @"com.keyword.smsalert.alert.caf";
 }
 
 /// Returns a path the alert engine can play, or nil when the sound cannot be used.
@@ -214,7 +226,7 @@ static NSString *KSASoundPickerPlayableDirectory(void)
         return converted;
     }
 
-    NSString *target = [directory stringByAppendingPathComponent:@"custom-alert.caf"];
+    NSString *target = [directory stringByAppendingPathComponent:KSASoundPickerPlayableName()];
     [fileManager removeItemAtPath:target error:NULL];
     NSError *error = nil;
     if (![fileManager moveItemAtPath:converted toPath:target error:&error]) {
@@ -247,7 +259,7 @@ static NSString *KSASoundPickerPlayableDirectory(void)
         NSDictionary *attributes = [footerFileManager attributesOfItemAtPath:playable error:NULL];
         double kilobytes = [attributes[NSFileSize] unsignedLongLongValue] / 1024.0;
         [footer appendFormat:@"\n%@", [NSString stringWithFormat:KSAPrefsLocalized(@"FooterSoundPickerConverted"),
-                                       playable.lastPathComponent,
+                                       playable,
                                        [NSString stringWithFormat:@"%.0f KB", kilobytes]]];
     } else if (current.length > 0 && !KSASoundFileSupportsAlertChannel(current)) {
         [footer appendFormat:@"\n%@", KSAPrefsLocalized(@"FooterSoundPickerConvertFailed")];

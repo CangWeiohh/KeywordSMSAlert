@@ -316,13 +316,18 @@ static NSString *const KSATriggerNotificationName = @"com.keyword.smsalert.trigg
     if (!running) {
         return KSAPrefsLocalized(@"RuntimeNotRunning");
     }
+    NSString *sound = [status[@"LastSoundFile"] lastPathComponent];
+    NSString *suffix = sound.length > 0
+        ? [NSString stringWithFormat:@" · %@%@", KSAPrefsLocalized(@"RuntimeSoundPrefix"), sound]
+        : @"";
+
     if ([status[@"FallbackStopActive"] boolValue]) {
-        return KSAPrefsLocalized(@"RuntimeStopRegistered");
+        return [KSAPrefsLocalized(@"RuntimeStopRegistered") stringByAppendingString:suffix];
     }
     if (status[@"LastTriggerAt"] != nil) {
-        return KSAPrefsLocalized(@"RuntimePowerDetected");
+        return [KSAPrefsLocalized(@"RuntimePowerDetected") stringByAppendingString:suffix];
     }
-    return KSAPrefsLocalized(@"RuntimeReady");
+    return [KSAPrefsLocalized(@"RuntimeReady") stringByAppendingString:suffix];
 }
 
 - (void)ksaWriteText:(id)value specifier:(PSSpecifier *)specifier

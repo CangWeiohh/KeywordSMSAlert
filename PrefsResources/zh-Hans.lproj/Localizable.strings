@@ -48,6 +48,7 @@
 "RuntimeStatus" = "提醒服务状态";
 "RuntimeNotRunning" = "未启动";
 "RuntimeReady" = "已启动 · 提醒引擎在 imagent 内";
+"RuntimeSoundPrefix" = "用声：";
 "RuntimeStopRegistered" = "已启动 · 电源键停止已注册（屏幕状态监听）";
 "RuntimePowerDetected" = "已启动 · 已触发过提醒";
 "RuntimeHIDUnavailable" = "已启动 · 电源键监听不可用";

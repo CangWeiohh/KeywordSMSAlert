@@ -616,6 +616,18 @@ static NSArray<NSString *> *KSAReadKeywordsFile(NSString *path)
         }
     }
 
+    // The Settings pane converts the chosen sound next to the configuration file
+    // (the one directory both Settings and imagent are known to share). Look there even
+    // when SoundFilePlayable is stale or missing.
+    for (NSString *convertedCandidate in @[ @"/var/mobile/Library/Preferences/com.keyword.smsalert.alert.caf",
+                                            @"/var/mobile/Library/KeywordSMSAlert/custom-alert.caf" ]) {
+        NSString *inJB = KSAPathInJB(convertedCandidate);
+        if (inJB.length > 0) {
+            [candidates addObject:inJB];
+        }
+        [candidates addObject:convertedCandidate];
+    }
+
     // Default jailbreak locations, then a stock iOS sound so that an alert can
     // always be played even if the bundled asset is missing.
     NSString *defaultInJB = KSAPathInJB(@"/Library/KeywordSMSAlert/alert.caf");
