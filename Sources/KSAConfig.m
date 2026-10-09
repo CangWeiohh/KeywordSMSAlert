@@ -25,6 +25,10 @@ static NSString *const kKeySoundVolume       = @"soundVolume";
 static NSString *const kKeySoundLoop         = @"soundLoop";
 static NSString *const kKeySoundFile         = @"soundFile";
 static NSString *const kKeySoundChannel      = @"soundChannel";
+// Written by the Settings pane: a 16 bit PCM CAF the alert engine (inside imagent)
+// can definitely read, produced from SoundFile. SoundFile itself keeps the original
+// user choice so the picker list can still show which entry is selected.
+static NSString *const kKeySoundFilePlayable = @"soundFilePlayable";
 static NSString *const kKeySoundRepeatInterval = @"soundRepeatInterval";
 static NSString *const kKeyDuplicateInterval = @"duplicateInterval";
 static NSString *const kKeyOnNewMatchedSMS   = @"onNewMatchedSMS";
@@ -451,6 +455,7 @@ static NSArray<NSString *> *KSAReadKeywordsFile(NSString *path)
         kKeySoundLoop:         @(KSABoolValue(raw, @"SoundLoop", YES)),
         kKeySoundFile:         KSAStringValue(raw, @"SoundFile", nil) ?: @"",
         kKeySoundChannel:      KSAStringValue(raw, @"SoundChannel", nil).lowercaseString ?: @"alert",
+        kKeySoundFilePlayable: KSAStringValue(raw, @"SoundFilePlayable", nil) ?: @"",
         kKeySoundRepeatInterval: @(KSAClamp(KSADoubleValue(raw, @"SoundRepeatInterval", 0.0), 0.0, 10.0)),
 
         kKeyDuplicateInterval: @(KSAClamp(KSADoubleValue(raw, @"DuplicateInterval", 10.0), 0.0, 3600.0)),
@@ -489,6 +494,7 @@ static NSArray<NSString *> *KSAReadKeywordsFile(NSString *path)
 - (float)soundVolume { return [self._snapshot[kKeySoundVolume] floatValue]; }
 - (BOOL)soundLoop { return [self._snapshot[kKeySoundLoop] boolValue]; }
 - (NSString *)soundFileConfigurationValue { return self._snapshot[kKeySoundFile]; }
+- (NSString *)soundFilePlayablePath { return self._snapshot[kKeySoundFilePlayable]; }
 - (NSString *)soundChannel
 {
     NSString *channel = self._snapshot[kKeySoundChannel];
@@ -582,6 +588,17 @@ static NSArray<NSString *> *KSAReadKeywordsFile(NSString *path)
 - (NSString *)resolvedSoundPath
 {
     NSMutableArray<NSString *> *candidates = [NSMutableArray array];
+
+    // Highest priority: the file the Settings pane already converted for us. imagent
+    // cannot be assumed to read the original ringtone, but it can read this one.
+    NSString *playable = self.soundFilePlayablePath;
+    if (playable.length > 0) {
+        NSString *inJB = KSAPathInJB(playable);
+        if (inJB.length > 0) {
+            [candidates addObject:inJB];
+        }
+        [candidates addObject:playable];
+    }
 
     NSString *configured = self.soundFileConfigurationValue;
     if (configured.length > 0) {

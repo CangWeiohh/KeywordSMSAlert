@@ -184,6 +184,45 @@ static const NSUInteger KSASoundPickerMaxDepth = 4;
     [self reloadSpecifiers];
 }
 
+#pragma mark - Playable copy
+
+/// Directory the alert engine (imagent) can definitely read: it is where its own
+/// configuration lives, and it is on the real rootfs rather than in the jailbreak root.
+static NSString *KSASoundPickerPlayableDirectory(void)
+{
+    return @"/var/mobile/Library/KeywordSMSAlert";
+}
+
+/// Returns a path the alert engine can play, or nil when the sound cannot be used.
+/// CAF/AIFF/WAV are returned as-is; everything else (m4r ringtones, mp3, ...) is
+/// transcoded to 16 bit PCM CAF under a stable name.
+- (NSString *)ksaPreparePlayableCopyOfSoundAtPath:(NSString *)path
+{
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSString *directory = KSASoundPickerPlayableDirectory();
+    [fileManager createDirectoryAtPath:directory withIntermediateDirectories:YES attributes:nil error:NULL];
+
+    if (KSASoundFileSupportsAlertChannel(path)) {
+        return path;
+    }
+
+    NSString *converted = KSAPCMCopyOfSoundFileInDirectory(path, directory);
+    if (converted.length == 0) {
+        return nil;
+    }
+    if ([converted isEqualToString:path]) {
+        return converted;
+    }
+
+    NSString *target = [directory stringByAppendingPathComponent:@"custom-alert.caf"];
+    [fileManager removeItemAtPath:target error:NULL];
+    NSError *error = nil;
+    if (![fileManager moveItemAtPath:converted toPath:target error:&error]) {
+        return converted;
+    }
+    return target;
+}
+
 #pragma mark - Specifiers
 
 - (NSArray *)specifiers
@@ -197,9 +236,24 @@ static const NSUInteger KSASoundPickerMaxDepth = 4;
     NSString *current = [self ksaCurrentValue];
 
     PSSpecifier *group = [PSSpecifier groupSpecifierWithName:nil];
-    [group setProperty:[NSString stringWithFormat:KSAPrefsLocalized(@"FooterSoundPicker"),
-                        current.length > 0 ? current : KSAPrefsLocalized(@"SoundBuiltIn")]
-                forKey:@"footerText"];
+    NSMutableString *footer = [NSMutableString stringWithFormat:KSAPrefsLocalized(@"FooterSoundPicker"),
+                               current.length > 0 ? current : KSAPrefsLocalized(@"SoundBuiltIn")];
+
+    // Tell the user which file the reminder will really use, and say so explicitly when
+    // a chosen sound could not be converted (this used to fail silently).
+    NSString *playable = [[KSAPrefsStore sharedStore] stringForKey:@"SoundFilePlayable" defaultValue:@""];
+    NSFileManager *footerFileManager = [NSFileManager defaultManager];
+    if (playable.length > 0 && [footerFileManager fileExistsAtPath:playable]) {
+        NSDictionary *attributes = [footerFileManager attributesOfItemAtPath:playable error:NULL];
+        double kilobytes = [attributes[NSFileSize] unsignedLongLongValue] / 1024.0;
+        [footer appendFormat:@"\n%@", [NSString stringWithFormat:KSAPrefsLocalized(@"FooterSoundPickerConverted"),
+                                       playable.lastPathComponent,
+                                       [NSString stringWithFormat:@"%.0f KB", kilobytes]]];
+    } else if (current.length > 0 && !KSASoundFileSupportsAlertChannel(current)) {
+        [footer appendFormat:@"\n%@", KSAPrefsLocalized(@"FooterSoundPickerConvertFailed")];
+    }
+
+    [group setProperty:footer forKey:@"footerText"];
     [specifiers addObject:group];
 
     NSArray<NSString *> *sounds = [self ksaCollectSounds];
@@ -272,26 +326,13 @@ static const NSUInteger KSASoundPickerMaxDepth = 4;
 
     KSAPrefsStore *store = [KSAPrefsStore sharedStore];
 
-    // The alert engine runs inside imagent, whose sandbox cannot be assumed to reach
-    // /Library/Ringtones or the jailbreak root. Convert the choice HERE, in the
-    // Settings process (which can read the ringtones), and store the converted 16 bit
-    // PCM CAF in /var/mobile/Library/KeywordSMSAlert - a directory imagent reads
-    // (it is where the configuration itself lives) - so the selected sound really is
-    // the sound that plays.
-    NSString *storedPath = path;
-    if (!KSASoundFileSupportsAlertChannel(path)) {
-        NSString *libraryDirectory = @"/var/mobile/Library/KeywordSMSAlert";
-        [[NSFileManager defaultManager] createDirectoryAtPath:libraryDirectory
-                                  withIntermediateDirectories:YES
-                                                   attributes:nil
-                                                        error:NULL];
-        NSString *converted = KSAPCMCopyOfSoundFileInDirectory(path, libraryDirectory);
-        if (converted.length > 0) {
-            storedPath = converted;
-        }
-    }
-
-    [store setString:storedPath forKey:[self ksaConfigurationKey]];
+    // SoundFile keeps the ORIGINAL choice, so the ✓ in this list keeps matching the row
+    // the user tapped. The playable file goes into SoundFilePlayable: the alert engine
+    // runs inside imagent, whose sandbox cannot be assumed to read /Library/Ringtones
+    // or the jailbreak root, so the conversion is done HERE, in the Settings process.
+    [store setString:path forKey:[self ksaConfigurationKey]];
+    NSString *playable = [self ksaPreparePlayableCopyOfSoundAtPath:path];
+    [store setString:playable ?: @"" forKey:@"SoundFilePlayable"];
     [store save];
     if ([self.parentController isKindOfClass:[PSListController class]]) {
         [(PSListController *)self.parentController reloadSpecifiers];

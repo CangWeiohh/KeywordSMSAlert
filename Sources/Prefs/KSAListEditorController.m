@@ -64,21 +64,8 @@
         index++;
     }
 
-    [specifiers addObject:[PSSpecifier groupSpecifierWithName:nil]];
-    PSSpecifier *addRow = [PSSpecifier preferenceSpecifierNamed:KSAPrefsLocalized(@"AddItem")
-                                                        target:self
-                                                           set:nil
-                                                           get:nil
-                                                        detail:nil
-                                                          cell:PSButtonCell
-                                                          edit:nil];
-    addRow.buttonAction = @selector(ksaAddTapped:);
-    [addRow setProperty:NSStringFromSelector(@selector(ksaAddTapped:)) forKey:@"action"];
-    // A PSButtonCell is only tappable when the specifier is explicitly enabled;
-    // without this the row renders but taps are ignored (the top-right + still works,
-    // which is why the defect looked like "only the plus adds entries").
-    [addRow setProperty:@YES forKey:@"enabled"];
-    [specifiers addObject:addRow];
+    // The bottom "Add" row was removed on request: the top right + (a plain
+    // UIBarButtonItem) is the single, always working way to add an entry.
 
     [self setSpecifiers:specifiers];
     return specifiers;

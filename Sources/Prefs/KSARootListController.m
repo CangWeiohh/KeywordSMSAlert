@@ -334,6 +334,10 @@ static NSString *const KSATriggerNotificationName = @"com.keyword.smsalert.trigg
     NSString *string = [value isKindOfClass:[NSString class]] ? value : [value stringValue];
     string = [string stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     [[KSAPrefsStore sharedStore] setString:string forKey:key];
+    if ([key isEqualToString:@"SoundFile"]) {
+        // Typed by hand: the converted copy the picker produced no longer applies.
+        [[KSAPrefsStore sharedStore] setString:@"" forKey:@"SoundFilePlayable"];
+    }
     [[KSAPrefsStore sharedStore] save];
 }
 
