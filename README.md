@@ -38,7 +38,7 @@
 | 越狱 | Dopamine RootHide 2.4.9.27（roothide bootstrap） |
 | 注入引擎 | roothide basebin（`libroothide.dylib` + `libsubstrate.dylib`） |
 | 构建 | roothide/theos（`THEOS_PACKAGE_SCHEME = roothide`） |
-| 产物 | `packages/KeywordSMSAlert_1.1.4_iphoneos-arm64e.deb` |
+| 产物 | `packages/KeywordSMSAlert_1.1.5_iphoneos-arm64e.deb` |
 
 ---
 
@@ -609,15 +609,21 @@ log stream --predicate 'eventMessage CONTAINS "PreferenceLoader"' --style compac
 
 ## 14. 应急开关与写操作审计
 
-### 14.0 从 1.1.3 及更早版本升级到 1.1.4（重要）
+### 14.0 从 1.1.3 及更早版本升级到 1.1.5（重要）
 
-1.1.4 是一次**架构变更**：包内不再有 `KeywordSMSAlertAlert.dylib` 与它的 SpringBoard filter plist，
+1.1.5 是一次**架构变更**：包内不再有 `KeywordSMSAlertAlert.dylib` 与它的 SpringBoard filter plist，
 新增 `/usr/libexec/ksaalertd` 与 `/Library/LaunchDaemons/com.keyword.smsalert.alertd.plist`。
 
 * 用 Sileo 直接覆盖安装即可（同包标识 `com.keyword.smsalert`），升级不会覆盖你的配置；
-* `postinst` 会自动重启 imagent 并尽力 `launchctl bootstrap` 新守护进程；
+* `postinst` 会把守护进程 plist 里的 `@JBROOT@` 替换成当前真实的随机 jbroot，自动重启 imagent 并尽力 `launchctl bootstrap`；
 * **升级后做一次 Dopamine「重启用户空间」**，让残留的旧 SpringBoard dylib 彻底不再被加载；
 * 之后任何版本都不再需要 respring —— 提醒引擎是独立进程，改配置即时生效。
+
+> **给后续维护者的硬性约束（roothide 专有坑）**：LaunchDaemon 的 `ProgramArguments` 必须是
+> **绝对路径**（`@JBROOT@/usr/libexec/ksaalertd` + 安装时替换）。launchd 是 Apple 的二进制、
+> 不经 libvroot 改写，任何 jbroot 相对路径（如 `/usr/libexec/ksaalertd`）都会落到只读的真实
+> rootfs 上而失败。守护进程 plist 放在 jbroot 的 `Library/LaunchDaemons/`，由 roothide 的
+> `bsctl startup` 执行 `launchctl bootstrap system /Library/LaunchDaemons` 时载入。
 
 在「设置 → KeywordSMSAlert → 诊断 → 提醒服务状态」可以看到守护进程是否运行、电源键监听是否注册，
 不需要 SSH 或终端。
@@ -705,6 +711,7 @@ dpkg -r com.keyword.smsalert                           # 卸载：prerm 会先 b
 
 | 版本 | 要点 |
 | --- | --- |
+| **1.1.5** | **修复守护进程启动路径**（1.1.4 的守护进程实际起不来）。**关键坑：launchd 是 Apple 自己的二进制，没有经过 roothide 的 libvroot 路径改写**，因此 LaunchDaemon plist 里的 `ProgramArguments` **不能用 jbroot 相对路径**（`/usr/libexec/ksaalertd` 会被解析到只读的真实 rootfs → 找不到 → 守护进程永不启动）。正确做法与 roothide 自身的 `com.roothide.bootstrap.bootstrapd.plist` 一致：包内写 `@JBROOT@/usr/libexec/ksaalertd`，`postinst` 用 `sed -i "s|@JBROOT@|$(jbroot)|g"` 在安装时替换为绝对路径（替换失败会打印警告）。守护进程实现与 1.1.4 相同 |
 | **1.1.4** | **零 SpringBoard 注入 + 独立提醒守护进程**。实机 A/B（Diagnostic A/B/C）证明：与电话助手 2.5.1 共存时，只要再向 SpringBoard 注入任何 dylib（含只有一个空构造器的 probe）就会导致用户空间重启持续黑屏；禁用全部 hook 也无效，完全不注入则恢复为「黑约 1 秒后正常」。故：① 删除 `KeywordSMSAlertAlert.dylib` 与 SpringBoard filter plist；② 新增 `ksaalertd`（mobile LaunchDaemon）承载提醒引擎；③ 电源键停止改为 IOHID **只观察**监听（`type=3`、`Consumer 0x0C/Power 0x30` 按下沿，需 HID entitlement）；④ 设置面板新增「提醒服务状态」，无需 SSH 即可确认守护进程与按键监听状态；⑤ `TestAlertOnLoad` 语义改为「守护进程启动 3 秒后」 |
 | **1.1.3** | **启动期零 hook**：`%ctor` 不装任何 hook，电源键/锁屏 hook 改为「第一个提醒开始时」按需安装；**删除兜底发现式挂载**（不再碰 `SBBacklightController`，这是与其它 SpringBoard 插件共存时的黑屏诱因）；`consumeInitialPressDown` 改为先 `%orig` 再观察；新增 `ksactl safemode on/off/status` 应急开关（标记文件存在则一个 hook 都不装） |
 | 1.1.2 | `PollInterval` 改完立即生效（免重启）+ 加入设置面板「行为」分组（0.5–30 s，默认 1.0） |
