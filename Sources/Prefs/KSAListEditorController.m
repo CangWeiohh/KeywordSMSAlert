@@ -74,6 +74,10 @@
                                                           edit:nil];
     addRow.buttonAction = @selector(ksaAddTapped:);
     [addRow setProperty:NSStringFromSelector(@selector(ksaAddTapped:)) forKey:@"action"];
+    // A PSButtonCell is only tappable when the specifier is explicitly enabled;
+    // without this the row renders but taps are ignored (the top-right + still works,
+    // which is why the defect looked like "only the plus adds entries").
+    [addRow setProperty:@YES forKey:@"enabled"];
     [specifiers addObject:addRow];
 
     [self setSpecifiers:specifiers];
