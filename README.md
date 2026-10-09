@@ -2,23 +2,28 @@
 
 > iOS tweak for jailbroken devices (iPhone 12 / iOS 15.4.1 / arm64e, Dopamine RootHide "roothide").
 > When an incoming SMS matches one of your keywords, it vibrates and plays an alert through the
-> **ringer/alert volume channel** (so it is heard even with the media volume at 0), and pressing the
-> **power button stops the alert instantly**. SMS detection runs read-only inside `imagent`; the alert
-> engine and the event-driven physical power-button observer run in a **standalone mobile launchd
-> service** (`ksaalertd`) — since **1.1.4 nothing is injected into SpringBoard at all**. A Preferences
-> panel (Settings → KeywordSMSAlert) and a `ksactl` CLI are included.
+> **ringer/alert volume channel** (so it is heard even with the media volume at 0), and a power-button
+> press stops the alert. **Since 1.2.0 everything runs inside one dylib injected into `imagent`**:
+> no SpringBoard injection, no launchd service, no extra process. A Preferences panel
+> (Settings -> KeywordSMSAlert) and a `ksactl` CLI are included.
 >
-> Repository: <https://github.com/CangWeiohh/KeywordSMSAlert> · Build: `make clean && make package FINALPACKAGE=1`
-> (roothide/theos) · License: MIT. 中文文档见下。
+> Repository: <https://github.com/CangWeiohh/KeywordSMSAlert> - Build: `make clean && make package FINALPACKAGE=1`
+> (roothide/theos) - License: MIT. 中文文档见下。
 
-> **1.1.4 架构变更（重要）**：早期版本把提醒引擎注入 SpringBoard，并在加载期/首次提醒时安装
-> 电源键 Hook。实机 A/B 证明：与「电话助手 2.5.1（roothide）」共存时，**只要再往 SpringBoard 注入
-> 任何 dylib（哪怕只有一个空构造器），用户空间重启就会持续黑屏**。因此 1.1.4 起：
-> ① 包内**不再包含任何 SpringBoard dylib / filter plist**；② 提醒引擎迁到独立守护进程
-> `ksaalertd`（`/Library/LaunchDaemons/com.keyword.smsalert.alertd.plist`，`UserName=mobile`）；
-> ③ 电源键停止改为**只观察、不消费**的 IOHID 事件监听（`Consumer 0x0C / Power 0x30`，按下沿），
-> 不 Hook、不注入、不轮询，也不改变系统原有的锁屏/唤醒/SOS 语义。
-
+> **1.2.0 架构（重要）**：与「电话助手 2.5.1（roothide）」共存时，实机 A/B 证明本插件
+> **只要引入任何“新的东西”就会让用户空间重启持续黑屏**：
+>
+> | 配置 | 结果 |
+> | --- | --- |
+> | 只有 imagent 里的 detector dylib | 黑约 1 秒后恢复（= 只装电话助手） |
+> | + 任意 SpringBoard dylib（含只有一个空构造器的 probe） | **持续黑屏** |
+> | + 独立 launchd 守护进程（1.1.4） | **持续黑屏** |
+>
+> 因此 1.2.0 把**提醒引擎也搬进那一个 detector dylib**（运行在 imagent 内）：包内不再有
+> SpringBoard 组件、不再有 LaunchDaemon、不再有第二个进程；`imagent` 不链接 AVFoundation
+> （震动与铃声通道只用 AudioToolbox）；电源键停止改为事件驱动的屏幕/锁屏状态监听
+> （`com.apple.iokit.hid.displayStatus` / `com.apple.springboard.lockstate`，无 entitlement、不轮询）。
+> `postinst` 还会主动清理历史遗留的 SpringBoard dylib 与旧 LaunchDaemon 配置。
 
 面向 **iPhone 12 / iOS 15.4.1 / arm64e / Dopamine RootHide 2.4.9.27（roothide）** 的
 关键词短信提醒 Tweak。
@@ -38,7 +43,7 @@
 | 越狱 | Dopamine RootHide 2.4.9.27（roothide bootstrap） |
 | 注入引擎 | roothide basebin（`libroothide.dylib` + `libsubstrate.dylib`） |
 | 构建 | roothide/theos（`THEOS_PACKAGE_SCHEME = roothide`） |
-| 产物 | `packages/KeywordSMSAlert_1.1.5_iphoneos-arm64e.deb` |
+| 产物 | `packages/KeywordSMSAlert_1.2.0_iphoneos-arm64e.deb` |
 
 ---
 
@@ -711,6 +716,7 @@ dpkg -r com.keyword.smsalert                           # 卸载：prerm 会先 b
 
 | 版本 | 要点 |
 | --- | --- |
+| **1.2.0** | **提醒引擎搬进 imagent**：包内只剩一个 detector dylib（+ 设置面板 + `ksactl`），无 SpringBoard 组件、无 LaunchDaemon、无第二个进程；imagent 不链接 AVFoundation；电源键停止改为屏幕/锁屏状态 Darwin 通知（无 entitlement）；`postinst` 清理历史遗留文件。触发原因：1.1.4 已完全不含 SpringBoard 组件却仍黑屏，说明“新增进程 / 新增注入”本身在这台设备上与电话助手冲突 |
 | **1.1.5** | **修复守护进程启动路径**（1.1.4 的守护进程实际起不来）。**关键坑：launchd 是 Apple 自己的二进制，没有经过 roothide 的 libvroot 路径改写**，因此 LaunchDaemon plist 里的 `ProgramArguments` **不能用 jbroot 相对路径**（`/usr/libexec/ksaalertd` 会被解析到只读的真实 rootfs → 找不到 → 守护进程永不启动）。正确做法与 roothide 自身的 `com.roothide.bootstrap.bootstrapd.plist` 一致：包内写 `@JBROOT@/usr/libexec/ksaalertd`，`postinst` 用 `sed -i "s|@JBROOT@|$(jbroot)|g"` 在安装时替换为绝对路径（替换失败会打印警告）。守护进程实现与 1.1.4 相同 |
 | **1.1.4** | **零 SpringBoard 注入 + 独立提醒守护进程**。实机 A/B（Diagnostic A/B/C）证明：与电话助手 2.5.1 共存时，只要再向 SpringBoard 注入任何 dylib（含只有一个空构造器的 probe）就会导致用户空间重启持续黑屏；禁用全部 hook 也无效，完全不注入则恢复为「黑约 1 秒后正常」。故：① 删除 `KeywordSMSAlertAlert.dylib` 与 SpringBoard filter plist；② 新增 `ksaalertd`（mobile LaunchDaemon）承载提醒引擎；③ 电源键停止改为 IOHID **只观察**监听（`type=3`、`Consumer 0x0C/Power 0x30` 按下沿，需 HID entitlement）；④ 设置面板新增「提醒服务状态」，无需 SSH 即可确认守护进程与按键监听状态；⑤ `TestAlertOnLoad` 语义改为「守护进程启动 3 秒后」 |
 | **1.1.3** | **启动期零 hook**：`%ctor` 不装任何 hook，电源键/锁屏 hook 改为「第一个提醒开始时」按需安装；**删除兜底发现式挂载**（不再碰 `SBBacklightController`，这是与其它 SpringBoard 插件共存时的黑屏诱因）；`consumeInitialPressDown` 改为先 `%orig` 再观察；新增 `ksactl safemode on/off/status` 应急开关（标记文件存在则一个 hook 都不装） |
