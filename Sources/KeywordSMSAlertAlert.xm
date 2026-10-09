@@ -216,15 +216,30 @@ static NSLock *KSAInstallerLock(void)
 
 BOOL KSAPowerButtonHooksInstalled(void)
 {
+#ifdef KSA_DIAGNOSTIC_NO_HOOKS
+    // Diagnostic A deliberately reports the watcher as unavailable/already handled
+    // so KSAAlertManager never enters the Logos installer.  The alert engine still
+    // loads and plays normally, isolating the hook layer as the only removed part.
+    return YES;
+#else
     NSLock *lock = KSAInstallerLock();
     [lock lock];
     BOOL installed = sKSAHooksInstalled;
     [lock unlock];
     return installed;
+#endif
 }
 
 void KSAInstallPowerButtonHooksIfNeeded(void)
 {
+#ifdef KSA_DIAGNOSTIC_NO_HOOKS
+    static dispatch_once_t diagnosticOnce;
+    dispatch_once(&diagnosticOnce, ^{
+        KSAInfo(@"Diagnostic A active: power-button hook installer is permanently disabled");
+    });
+    return;
+#endif
+
     if (!KSAIsSpringBoardProcess()) {
         return;
     }
@@ -268,6 +283,10 @@ void KSAInstallPowerButtonHooksIfNeeded(void)
 
         KSAInfo(@"alert dylib loaded into %@ (pid %d) - no hook installed at load time",
                 KSAProcessName(), getpid());
+
+#ifdef KSA_DIAGNOSTIC_NO_HOOKS
+        KSAInfo(@"Diagnostic A build: all power-button/lock hook installation is disabled");
+#endif
 
         if (KSASafeModeEnabled()) {
             KSAInfo(@"safemode marker present at %@ - this process will install no hook at all",

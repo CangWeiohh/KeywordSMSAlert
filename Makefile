@@ -37,6 +37,26 @@ THEOS_PACKAGE_SCHEME = roothide
 
 PACKAGE_VERSION = 1.1.3
 
+# Diagnostic packages for GUI-only on-device A/B testing.
+#
+#   make ... KSA_BUILD_VARIANT=no-hooks
+#     Keeps the complete SpringBoard alert engine but makes the power-button hook
+#     installer an unconditional no-op.  This distinguishes hook conflicts from
+#     conflicts caused by loading/initialising the alert dylib itself.
+#
+#   make ... KSA_BUILD_VARIANT=no-springboard
+#     Packages only the imagent detector (plus Settings/ksactl).  No tweak dylib or
+#     filter plist is installed into SpringBoard.  Alerts intentionally do not play;
+#     this package exists only to test userspace-reboot compatibility via Sileo.
+KSA_BUILD_VARIANT ?= normal
+
+ifeq ($(KSA_BUILD_VARIANT),no-hooks)
+PACKAGE_VERSION = 1.1.4~diag1
+KSA_ALERT_VARIANT_CFLAGS = -DKSA_DIAGNOSTIC_NO_HOOKS=1
+else ifeq ($(KSA_BUILD_VARIANT),no-springboard)
+PACKAGE_VERSION = 1.1.4~diag2
+endif
+
 include $(THEOS)/makefiles/common.mk
 
 # Shared, framework free sources (compiled into both dylibs).
@@ -49,7 +69,11 @@ KSA_SHARED_FILES = \
 
 KSA_CFLAGS = -fobjc-arc -I$(THEOS_PROJECT_DIR)/Sources -Wno-unused-parameter
 
+ifeq ($(KSA_BUILD_VARIANT),no-springboard)
+TWEAK_NAME = KeywordSMSAlertDetector
+else
 TWEAK_NAME = KeywordSMSAlertDetector KeywordSMSAlertAlert
+endif
 
 # ---------------------------------------------------------------- detector ---
 KeywordSMSAlertDetector_FILES = \
@@ -72,7 +96,7 @@ KeywordSMSAlertAlert_FILES = \
 	Sources/KSAPowerButton.m \
 	$(KSA_SHARED_FILES)
 
-KeywordSMSAlertAlert_CFLAGS = $(KSA_CFLAGS)
+KeywordSMSAlertAlert_CFLAGS = $(KSA_CFLAGS) $(KSA_ALERT_VARIANT_CFLAGS)
 KeywordSMSAlertAlert_FRAMEWORKS = Foundation CoreFoundation AVFoundation AudioToolbox
 KeywordSMSAlertAlert_LDFLAGS = -lroothide
 
@@ -118,7 +142,13 @@ INSTALL_TARGET_PROCESSES = SpringBoard imagent
 
 # Keep the generated .deb name tidy (KeywordSMSAlert_<version>_<arch>.deb) while the
 # Debian package identifier stays the conventional com.keyword.smsalert.
+ifeq ($(KSA_BUILD_VARIANT),no-hooks)
+THEOS_PACKAGE_NAME = KeywordSMSAlert_DiagnosticA_NoHooks
+else ifeq ($(KSA_BUILD_VARIANT),no-springboard)
+THEOS_PACKAGE_NAME = KeywordSMSAlert_DiagnosticB_NoSpringBoard
+else
 THEOS_PACKAGE_NAME = KeywordSMSAlert
+endif
 
 after-install::
 	install.exec "killall -9 imagent 2>/dev/null; true"
