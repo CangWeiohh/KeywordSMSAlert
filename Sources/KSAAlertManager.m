@@ -11,6 +11,10 @@
 #import "KSASoundConverter.h"
 #import "KSATrigger.h"
 
+#ifdef KSA_STANDALONE_ALERTD
+#import "Daemon/KSARuntimeStatus.h"
+#endif
+
 #import <AVFoundation/AVFoundation.h>
 #import <AudioToolbox/AudioToolbox.h>
 
@@ -140,6 +144,9 @@ static const NSTimeInterval kKSASystemSoundRepeatInterval = 2.0;
     KSAInfo(@"alert engine ready (process %@, sound channel %@, sound file %@)",
             KSAProcessName(), config.soundChannel,
             [config resolvedSoundPath] ?: @"(system default sound id)");
+#ifdef KSA_STANDALONE_ALERTD
+    KSARuntimeStatusUpdate(@{ @"AlertEngineReady": @YES });
+#endif
 }
 
 - (void)_audioSessionInterruption:(NSNotification *)notification
@@ -196,6 +203,12 @@ static const NSTimeInterval kKSASystemSoundRepeatInterval = 2.0;
 - (void)_handleTriggerOnQueueWithSource:(NSString *)source
 {
     KSAInfo(@"trigger received (source: %@)", source ?: @"?");
+#ifdef KSA_STANDALONE_ALERTD
+    KSARuntimeStatusUpdate(@{
+        @"LastTriggerAt": @([[NSDate date] timeIntervalSince1970]),
+        @"LastTriggerSource": source ?: @"?"
+    });
+#endif
 
     KSAConfig *config = [KSAConfig sharedInstance];
     [config reloadIfNeeded];
@@ -269,13 +282,11 @@ static const NSTimeInterval kKSASystemSoundRepeatInterval = 2.0;
         return;
     }
 
-    // An alert is about to play, which is the only situation in which the power
-    // button has to be observable. This is where - and the only place where - the
-    // SpringBoard hooks get installed; at dylib load time nothing is hooked
-    // (see KSAHookInstaller.h). Calling it here keeps the feature identical while
-    // taking the tweak out of SpringBoard's early boot completely.
+    // The shared manager supports both the legacy SpringBoard diagnostic target and
+    // the production standalone daemon. In production the linked daemon stub reports
+    // the stop-event source ready, so this branch never installs a process hook.
     if (!KSAPowerButtonHooksInstalled()) {
-        KSAInfo(@"installing power button hooks now (first alert)");
+        KSAInfo(@"installing power button hooks now (legacy/diagnostic target)");
         KSAInstallPowerButtonHooksIfNeeded();
     }
 
@@ -323,6 +334,12 @@ static const NSTimeInterval kKSASystemSoundRepeatInterval = 2.0;
 
     [self _setStateOnQueue:KSAAlertStateAlerting];
     KSAInfo(@"alert started (lifetime %.1fs)", lifetime);
+#ifdef KSA_STANDALONE_ALERTD
+    KSARuntimeStatusUpdate(@{
+        @"Alerting": @YES,
+        @"LastAlertStartedAt": @([[NSDate date] timeIntervalSince1970])
+    });
+#endif
 }
 
 - (void)_stopOnQueueWithReason:(NSString *)reason
@@ -338,6 +355,13 @@ static const NSTimeInterval kKSASystemSoundRepeatInterval = 2.0;
     [self _teardownChannelsOnQueue];
     [self _setStateOnQueue:KSAAlertStateIdle];
     KSAInfo(@"alert stopped (%@)", reason ?: @"?");
+#ifdef KSA_STANDALONE_ALERTD
+    KSARuntimeStatusUpdate(@{
+        @"Alerting": @NO,
+        @"LastAlertStoppedAt": @([[NSDate date] timeIntervalSince1970]),
+        @"LastStopReason": reason ?: @"?"
+    });
+#endif
 
     if (_pendingEvent != nil) {
         KSAMatchEvent *pending = _pendingEvent;

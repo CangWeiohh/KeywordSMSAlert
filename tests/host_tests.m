@@ -18,6 +18,7 @@
 #import "KSAConfig.h"
 #import "KSACommon.h"
 #import "KSADedupCache.h"
+#import "Daemon/KSAHIDEventMatcher.h"
 
 static NSUInteger sPassed = 0;
 static NSUInteger sFailed = 0;
@@ -190,6 +191,21 @@ static void KSATestSoundResolution(NSString *directory)
               config.resolvedSoundPath ?: @"nil");
 }
 
+static void KSATestHIDMatcher(void)
+{
+    printf("\n[6] standalone HID power-button matcher\n");
+    KSA_CHECK(KSAHIDEventIsPowerButtonDown(3, 0x0C, 0x30, 1),
+              @"Consumer/Power DOWN is accepted");
+    KSA_CHECK(!KSAHIDEventIsPowerButtonDown(3, 0x0C, 0x30, 0),
+              @"Consumer/Power UP is ignored");
+    KSA_CHECK(!KSAHIDEventIsPowerButtonDown(3, 0x0C, 0xE9, 1),
+              @"volume-up is not mistaken for power");
+    KSA_CHECK(!KSAHIDEventIsPowerButtonDown(3, 0x0C, 0xEA, 1),
+              @"volume-down is not mistaken for power");
+    KSA_CHECK(!KSAHIDEventIsPowerButtonDown(11, 0x0C, 0x30, 1),
+              @"non-keyboard HID events are ignored");
+}
+
 int main(int argc, char *argv[])
 {
     @autoreleasepool {
@@ -201,6 +217,7 @@ int main(int argc, char *argv[])
         KSATestMatching(directory);
         KSATestDedup();
         KSATestSoundResolution(directory);
+        KSATestHIDMatcher();
 
         [[NSFileManager defaultManager] removeItemAtPath:directory error:NULL];
 

@@ -3,12 +3,21 @@
 > iOS tweak for jailbroken devices (iPhone 12 / iOS 15.4.1 / arm64e, Dopamine RootHide "roothide").
 > When an incoming SMS matches one of your keywords, it vibrates and plays an alert through the
 > **ringer/alert volume channel** (so it is heard even with the media volume at 0), and pressing the
-> **power button stops the alert instantly**. SMS detection runs inside `imagent`, the alert engine and
-> the power-button watcher run inside SpringBoard; a Preferences panel (Settings → KeywordSMSAlert) and
-> a `ksactl` CLI are included.
+> **power button stops the alert instantly**. SMS detection runs read-only inside `imagent`; the alert
+> engine and the event-driven physical power-button observer run in a **standalone mobile launchd
+> service** (`ksaalertd`) — since **1.1.4 nothing is injected into SpringBoard at all**. A Preferences
+> panel (Settings → KeywordSMSAlert) and a `ksactl` CLI are included.
 >
 > Repository: <https://github.com/CangWeiohh/KeywordSMSAlert> · Build: `make clean && make package FINALPACKAGE=1`
 > (roothide/theos) · License: MIT. 中文文档见下。
+
+> **1.1.4 架构变更（重要）**：早期版本把提醒引擎注入 SpringBoard，并在加载期/首次提醒时安装
+> 电源键 Hook。实机 A/B 证明：与「电话助手 2.5.1（roothide）」共存时，**只要再往 SpringBoard 注入
+> 任何 dylib（哪怕只有一个空构造器），用户空间重启就会持续黑屏**。因此 1.1.4 起：
+> ① 包内**不再包含任何 SpringBoard dylib / filter plist**；② 提醒引擎迁到独立守护进程
+> `ksaalertd`（`/Library/LaunchDaemons/com.keyword.smsalert.alertd.plist`，`UserName=mobile`）；
+> ③ 电源键停止改为**只观察、不消费**的 IOHID 事件监听（`Consumer 0x0C / Power 0x30`，按下沿），
+> 不 Hook、不注入、不轮询，也不改变系统原有的锁屏/唤醒/SOS 语义。
 
 
 面向 **iPhone 12 / iOS 15.4.1 / arm64e / Dopamine RootHide 2.4.9.27（roothide）** 的
@@ -29,7 +38,7 @@
 | 越狱 | Dopamine RootHide 2.4.9.27（roothide bootstrap） |
 | 注入引擎 | roothide basebin（`libroothide.dylib` + `libsubstrate.dylib`） |
 | 构建 | roothide/theos（`THEOS_PACKAGE_SCHEME = roothide`） |
-| 产物 | `packages/KeywordSMSAlert_1.0.5_iphoneos-arm64e.deb` |
+| 产物 | `packages/KeywordSMSAlert_1.1.4_iphoneos-arm64e.deb` |
 
 ---
 
@@ -44,7 +53,9 @@
 | **走铃声/提醒通道发声**（媒体音量为 0 也能听见） | **可行（默认）** | `AudioServicesCreateSystemSoundID` + `AudioServicesPlaySystemSound` 走**提醒（铃声）音量** | `SoundChannel = alert`（默认）；受静音拨片影响，仅支持未压缩 CAF/AIFF/WAV；想“静音也响”用 `SoundChannel = media` |
 | 从系统提示音/铃声中选提醒音 | **可行** | 设置面板新增「从系统提示音 / 铃声中选」，运行时扫描 `/System/Library/Audio/UISounds`、`/Library/Ringtones` 等目录并列出候选 | m4r/mp3 铃声不支持提醒通道，会自动改走媒体通道播放（日志有说明） |
 | 组合提醒 `AlertMode = 0/1/2/3` | **可行** | 两条通道独立启停 | `VibrationEnabled` / `SoundEnabled` 再叠加门控 |
-| 电源键停止（按下去的瞬间，锁屏与唤醒两种状态都覆盖） | **可行（三重挂载点，运行时校验）** | 按键 DOWN 的真实链路：`UIPress(Lock)` → `SBPressGestureRecognizer` → `SBLockHardwareButton -buttonDown:` → `SBLockHardwareButtonActions -performInitialButtonDownActions` → `SBSleepWakeHardwareButtonInteraction -consumeInitialPressDown`（**该类同时拥有 `_performSleep` 与 `_performWake`**）。类与 ivar 在 iPhoneOS 15.2/15.6 SpringBoard 符号表中验证，方法名有 iOS 13.6/14.0 头文件 + iOS 14–16 真实 tweak 源码（RemoteCompanion 支持 roothide、Lock-Master、NineLS 等）佐证 | 优先挂 `consumeInitialPressDown`（**`return %orig` 原样返回 iOS 自己的“是否消费”决定**，绝不改写锁屏/唤醒语义）与 `performInitialButtonDownActions`，再用 `-buttonDown:` 兜底；`lockUIFromSource:` 仅作补充 |
+| 电源键停止（按下去的瞬间，锁屏与唤醒两种状态都覆盖） | **可行（1.1.4 生产方案：独立守护进程 + IOHID 观察）** | `ksaalertd` 用 `IOHIDEventSystemClientCreate` + `IOHIDEventSystemClientRegisterEventCallback` **只观察** HID 事件流：键盘事件 `type=3`、字段 `UsagePage=0x30000 / Usage=0x30001 / Down=0x30002`，命中 `Consumer 页 0x0C / usage 0x30(Power)` 的**按下沿**即停止提醒。事件永不派发/消费/改写，锁屏、唤醒、SOS、Siri 语义完全不变 | 需要 `com.apple.private.hid.client.event-monitor` 等 entitlement（`Sources/Daemon/ksaalertd.entitlements`）；**不注入任何进程**，因此与其它 SpringBoard 插件共存安全 |
+| 电源键停止（旧方案：SpringBoard Hook） | **已废弃（1.1.4 移除）** | 旧版在 `SBSleepWakeHardwareButtonInteraction -consumeInitialPressDown` 等处安装 Hook。实机证明与电话助手共存时会导致用户空间重启持续黑屏，故整个 SpringBoard 注入被删除 | 相关调研保留在 `docs/power-button-hook-research.md`，仅供历史参考；诊断构建变体见 Makefile 的 `KSA_BUILD_VARIANT` |
+| 提醒引擎宿主 | **独立 mobile LaunchDaemon（1.1.4）** | `ksaalertd` 由 launchd 以 `mobile` 身份常驻（`RunAtLoad` + `KeepAlive`），链接 AVFoundation/AudioToolbox；SpringBoard 完全不参与 | 守护进程状态可在「设置 → KeywordSMSAlert → 提醒服务状态」查看（无需 SSH） |
 | 电源键停止（**熄屏**状态下按键是否走同一 DOWN 链路） | **结构上高度可信，但需实机 5 分钟确认** | 该类对象既负责 sleep 又负责 wake，按键 DOWN 必然要被它咨询；但“屏幕全黑时 `buttonDown:`/`performInitialButtonDownActions` 是否也触发”没有公开证据可逐字证实 | 提供了探针流程（见 §10），若熄屏时确实完全不触发，才会退化为“按设定时长自动结束”；报告明确不建议走 IOHIDEventSystemClient（需要 HID entitlement，风险最高） |
 | 提醒状态机 | **可行** | 串行队列 + 显式状态转移 | `restart` / `ignore` / `queue` |
 | 防重复触发 | **可行**（已单测） | 以 GUID 为键，`DuplicateInterval`（默认 10 秒）窗口内抑制 | 无 GUID 时退化为 `sender hash + text hash` |
@@ -52,7 +63,7 @@
 | 可控日志、默认不写短信正文 | **可行** | 默认只输出 `sender hash / message hash / length`；`DebugEnabled=1` 才输出正文 | `LogToFile=1` 可写文件日志（自动限 256 KB 轮转） |
 | 不改短信内容/数据库/通知中心/Messages UI | **可行** | 全程只“读消息对象字段”，无任何 sqlite/数据库/通知写入代码 | 代码中不存在 sqlite 引用 |
 | PreferenceBundle | 未做（第二阶段） | 本阶段按需求用 plist | 配置引擎已支持显式路径加载，便于后续接入设置面板 |
-| 卸载 | **可行** | `dpkg -r` 删除 dylib / filter plist / 资源；不安装任何 LaunchDaemon，无残留进程 |
+| 卸载 | **可行** | `dpkg -r` 删除 detector dylib、filter plist、`ksaalertd`、LaunchDaemon plist 与资源；`prerm` 会先 `launchctl bootout` 停止守护进程，无残留运行进程；配置文件保留 |
 
 ---
 
@@ -75,15 +86,15 @@ Baseband → CommCenter (SMSCTServer)
   通知路径会受“静音 / 专注模式 / 前台抑制 / 通知权限”影响，无法满足“收到后立即检测、不依赖通知”。
 * **B. 只注入短信 daemon —— 不够**。
   `imagent` 里没有可用的音频/震动会话管理，也无法观察物理电源键。
-* **C. 同时注入 imagent + SpringBoard —— 采用（两个独立 dylib）**：
+* **C. imagent 注入检测 + 独立守护进程提醒（1.1.4 采用）**：
 
-| dylib | 注入进程 | 职责 | 链接的框架 |
+| 组件 | 宿主 | 职责 | 链接的框架 |
 | --- | --- | --- | --- |
-| `KeywordSMSAlertDetector.dylib` | `com.apple.imagent` | 监听短信、匹配关键词、发 Darwin 通知 | Foundation / CoreFoundation / libroothide / libsubstrate |
-| `KeywordSMSAlertAlert.dylib` | `com.apple.springboard` | 提醒引擎（震动 + 声音）、电源键监听 | 额外 AVFoundation / AudioToolbox |
+| `KeywordSMSAlertDetector.dylib` | `com.apple.imagent`（注入） | 只读轮询 `sms.db`、匹配关键词、发 Darwin 通知 | Foundation / CoreFoundation / sqlite3 / libroothide |
+| `ksaalertd`（可执行文件） | **launchd 独立守护进程（mobile）** | 提醒引擎（震动 + 铃声通道声音）、IOHID 电源键观察 | Foundation / CoreFoundation / AVFoundation / AudioToolbox / libroothide |
 
-拆成两个 dylib 的原因：**不让短信 daemon 加载音频框架**（稳定性优先）。单一 dylib 会把
-AVFoundation/AVAudioPlayer 拖进 `imagent`；拆分后 daemon 侧只依赖 Foundation。
+拆分原因：**① 不让短信 daemon 加载音频框架；② 完全不碰 SpringBoard**。
+早期版本用 `KeywordSMSAlertAlert.dylib` 注入 SpringBoard，1.1.4 已彻底删除该组件（构建变体仍可复现用于诊断）。
 
 * **D. 其他系统服务机制**：不需要。跨进程通信使用 Darwin 通知（`CFNotificationCenterGetDarwinNotifyCenter`），
   不传 payload、不写共享文件、不需要 XPC 服务和任何 entitlement，daemon 侧只做一次 `notify_post` 等价调用。
@@ -113,8 +124,15 @@ UIPress(pressType Lock) → SBPressGestureRecognizer
 
 明确**不使用**的点：`SBHIDButtonStateArbiter`（属于相机快门/音量仲裁，不是电源键）、
 `SBHIDEventDispatchController`（iOS 15 不存在，16.1 才出现）、`SBLockScreenManager -lockUIFromSource:`
-（只覆盖锁屏，且会被 AssistiveTouch/远程锁屏触发）、`-singlePress:`（是抬起事件，且会被 SOS/Siri 抢占）、
-IOHIDEventSystemClient（需要 HID entitlement，风险最高）。
+（只覆盖锁屏，且会被 AssistiveTouch/远程锁屏触发）、`-singlePress:`（是抬起事件，且会被 SOS/Siri 抢占）。
+
+**1.1.4 的电源键方案**：不再使用任何 Hook，改由独立守护进程 `ksaalertd` 通过
+`IOHIDEventSystemClientCreate` / `IOHIDEventSystemClientScheduleWithRunLoop` /
+`IOHIDEventSystemClientRegisterEventCallback` **只观察** HID 事件流，命中
+`type=3` + `Consumer 0x0C / Power 0x30` 的按下沿即停止提醒；事件从不被派发、消费或改写，
+因此锁屏/唤醒/SOS/Siri 行为与未安装插件时一致。该客户端需要
+`com.apple.private.hid.client.event-monitor` 等 entitlement（见 `Sources/Daemon/ksaalertd.entitlements`）。
+上面列出的 SpringBoard Hook 链路仅在诊断构建变体中保留。
 
 方向判定：`-[CTMessage type] == 1`（incoming）或 `-[CTMessage isIncoming]`；`IMMessageItem.isFromMe == YES` 一律忽略。
 服务过滤：`IMItem.service` 只接受包含 “sms” 的（`IncludeIMessage = 1` 时才评估 iMessage）。
@@ -591,33 +609,36 @@ log stream --predicate 'eventMessage CONTAINS "PreferenceLoader"' --style compac
 
 ## 14. 应急开关与写操作审计
 
+### 14.0 从 1.1.3 及更早版本升级到 1.1.4（重要）
+
+1.1.4 是一次**架构变更**：包内不再有 `KeywordSMSAlertAlert.dylib` 与它的 SpringBoard filter plist，
+新增 `/usr/libexec/ksaalertd` 与 `/Library/LaunchDaemons/com.keyword.smsalert.alertd.plist`。
+
+* 用 Sileo 直接覆盖安装即可（同包标识 `com.keyword.smsalert`），升级不会覆盖你的配置；
+* `postinst` 会自动重启 imagent 并尽力 `launchctl bootstrap` 新守护进程；
+* **升级后做一次 Dopamine「重启用户空间」**，让残留的旧 SpringBoard dylib 彻底不再被加载；
+* 之后任何版本都不再需要 respring —— 提醒引擎是独立进程，改配置即时生效。
+
+在「设置 → KeywordSMSAlert → 诊断 → 提醒服务状态」可以看到守护进程是否运行、电源键监听是否注册，
+不需要 SSH 或终端。
+
 ### 14.1 一键停用（不需要卸载）
 
 ```bash
-ksactl set Enabled false      # 关掉总开关
-killall -9 imagent            # 让 imagent 重新启动
+ksactl set Enabled false      # 关掉总开关（提醒引擎停止工作）
+ksactl reload                 # 让守护进程与 imagent 立刻重读配置
 ```
 
-**1.0.7 起 `Enabled = false` 时 imagent 侧完全不安装任何 Hook**（连 `IMDService` 触发点都不挂）——
-也就是说此时短信守护进程与没装插件时完全一致，用来一键排除/恢复。SpringBoard 侧仍会加载提醒 dylib，
-但检测不到短信就不会有任何行为；要连它一起排除就卸载 + respring：
+`Enabled = false` 时 imagent 侧只读轮询直接返回（不查库、不匹配、不发通知），守护进程也停止提醒。
+要彻底停止守护进程本身：
 
 ```bash
-dpkg -r com.keyword.smsalert && killall -9 imagent && sbreload
+launchctl bootout system/com.keyword.smsalert.alertd   # 停止提醒守护进程（重启后仍会自动加载）
+dpkg -r com.keyword.smsalert                           # 卸载：prerm 会先 bootout，无残留进程
 ```
 
-**1.1.3 起还有一个更彻底的开关：`safemode`。** 只要这个标记文件存在，SpringBoard 里**一个 hook 都不装**
-（提醒照旧工作，只是电源键不再能停止它）——用来在黑屏/卡死时做隔离，不必卸载：
-
-```bash
-ksactl safemode on            # 创建 /var/mobile/Library/Preferences/com.keyword.smsalert.safemode
-killall -9 SpringBoard        # 或重启用户空间，让 SpringBoard 重新加载（此时不再装 hook）
-ksactl safemode status        # on / off
-ksactl safemode off           # 恢复（下次提醒时重新安装 hook）
-```
-
-> 注意：**`Enabled = false` 只关提醒，不关 hook**（安装 hook 与是否启用无关，1.1.3 起 hook 只在"第一个提醒开始时"才装，
-> 所以实际效果等价）。做隔离实验时请用上面的 `safemode` 或直接卸载。
+**1.1.4 起不再有 SpringBoard 组件**，因此 `ksactl safemode`（1.1.3 的 SpringBoard hook 隔离开关）
+已无实际作用，仅保留兼容。旧版 `safemode` 标记文件的存在不影响 1.1.4 的任何行为。
 
 ### 14.2 检测方式（1.1.2 起默认无 Hook）
 
@@ -684,6 +705,7 @@ ksactl safemode off           # 恢复（下次提醒时重新安装 hook）
 
 | 版本 | 要点 |
 | --- | --- |
+| **1.1.4** | **零 SpringBoard 注入 + 独立提醒守护进程**。实机 A/B（Diagnostic A/B/C）证明：与电话助手 2.5.1 共存时，只要再向 SpringBoard 注入任何 dylib（含只有一个空构造器的 probe）就会导致用户空间重启持续黑屏；禁用全部 hook 也无效，完全不注入则恢复为「黑约 1 秒后正常」。故：① 删除 `KeywordSMSAlertAlert.dylib` 与 SpringBoard filter plist；② 新增 `ksaalertd`（mobile LaunchDaemon）承载提醒引擎；③ 电源键停止改为 IOHID **只观察**监听（`type=3`、`Consumer 0x0C/Power 0x30` 按下沿，需 HID entitlement）；④ 设置面板新增「提醒服务状态」，无需 SSH 即可确认守护进程与按键监听状态；⑤ `TestAlertOnLoad` 语义改为「守护进程启动 3 秒后」 |
 | **1.1.3** | **启动期零 hook**：`%ctor` 不装任何 hook，电源键/锁屏 hook 改为「第一个提醒开始时」按需安装；**删除兜底发现式挂载**（不再碰 `SBBacklightController`，这是与其它 SpringBoard 插件共存时的黑屏诱因）；`consumeInitialPressDown` 改为先 `%orig` 再观察；新增 `ksactl safemode on/off/status` 应急开关（标记文件存在则一个 hook 都不装） |
 | 1.1.2 | `PollInterval` 改完立即生效（免重启）+ 加入设置面板「行为」分组（0.5–30 s，默认 1.0） |
 | 1.1.1 | 彻底删除 `hooks` 模式与 `DetectionMode` / `HookMessageStoreBackstop` / `HookServiceSessionBackstop`；配置文件不再作为 dpkg conffile（`postinst` 首次生成）→ 升级无提示、不覆盖 |

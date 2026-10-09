@@ -1,0 +1,11 @@
+#!/bin/sh
+# Stop the standalone alert job before remove/upgrade. Configuration is preserved.
+
+if command -v launchctl >/dev/null 2>&1; then
+	launchctl bootout system/com.keyword.smsalert.alertd 2>/dev/null || true
+fi
+if command -v killall >/dev/null 2>&1; then
+	killall -9 ksaalertd 2>/dev/null || true
+fi
+
+exit 0

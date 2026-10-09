@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.keyword.smsalert.alertd</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/usr/libexec/ksaalertd</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>UserName</key>
+	<string>mobile</string>
+	<key>ProcessType</key>
+	<string>Interactive</string>
+	<key>ThrottleInterval</key>
+	<integer>5</integer>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>HOME</key>
+		<string>/var/mobile</string>
+		<key>TMPDIR</key>
+		<string>/var/tmp</string>
+	</dict>
+</dict>
+</plist>

@@ -4,7 +4,7 @@
 //
 //  Root pane. Every row writes straight into the configuration plist that the tweak
 //  reads (/var/mobile/Library/Preferences/com.keyword.smsalert.plist) and posts the
-//  Darwin reload notification so SpringBoard and imagent pick the change up at once.
+//  Darwin reload notification so the standalone alert daemon and imagent apply it.
 //
 
 #import "KSARootListController.h"
@@ -106,6 +106,18 @@ static NSString *const KSATriggerNotificationName = @"com.keyword.smsalert.trigg
     row.buttonAction = action;
     [row setProperty:NSStringFromSelector(action) forKey:@"action"];
     [row setProperty:@YES forKey:@"enabled"];
+    return row;
+}
+
+- (PSSpecifier *)ksaValueRow:(NSString *)label getter:(SEL)getter
+{
+    PSSpecifier *row = [PSSpecifier preferenceSpecifierNamed:label
+                                                      target:self
+                                                         set:nil
+                                                         get:getter
+                                                      detail:nil
+                                                        cell:PSTitleValueCell
+                                                        edit:nil];
     return row;
 }
 
@@ -232,6 +244,8 @@ static NSString *const KSATriggerNotificationName = @"com.keyword.smsalert.trigg
     [specifiers addObject:[self ksaSwitchRow:KSAPrefsLocalized(@"LogToFile")
                                          key:@"LogToFile"
                                 defaultValue:NO]];
+    [specifiers addObject:[self ksaValueRow:KSAPrefsLocalized(@"RuntimeStatus")
+                                      getter:@selector(ksaRuntimeStatus:)]];
     [specifiers addObject:[self ksaSwitchRow:KSAPrefsLocalized(@"TestAlertOnLoad")
                                          key:@"TestAlertOnLoad"
                                 defaultValue:NO]];
@@ -292,6 +306,22 @@ static NSString *const KSATriggerNotificationName = @"com.keyword.smsalert.trigg
     NSString *current = [[KSAPrefsStore sharedStore] stringForKey:key defaultValue:fallback];
     NSUInteger index = [values indexOfObject:current];
     return (index != NSNotFound && index < titles.count) ? titles[index] : (current ?: @"");
+}
+
+- (id)ksaRuntimeStatus:(PSSpecifier *)specifier
+{
+    NSString *path = @"/var/mobile/Library/Preferences/com.keyword.smsalert.runtime.plist";
+    NSDictionary *status = [NSDictionary dictionaryWithContentsOfFile:path];
+    if (![status[@"DaemonRunning"] boolValue]) {
+        return KSAPrefsLocalized(@"RuntimeNotRunning");
+    }
+    if (status[@"LastPowerButtonAt"] != nil) {
+        return KSAPrefsLocalized(@"RuntimePowerDetected");
+    }
+    if ([status[@"HIDAvailable"] boolValue]) {
+        return KSAPrefsLocalized(@"RuntimeReady");
+    }
+    return KSAPrefsLocalized(@"RuntimeHIDUnavailable");
 }
 
 - (void)ksaWriteText:(id)value specifier:(PSSpecifier *)specifier

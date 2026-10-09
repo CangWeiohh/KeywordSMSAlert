@@ -17,7 +17,7 @@
 "IgnoreSenders" = "Ignored senders";
 
 "GroupAlert" = "Alert";
-"FooterAlert" = "Alert mode 0 = off, 1 = vibration, 2 = sound, 3 = vibration + sound. Sound volume is relative to the system media volume; the system volume itself is never changed. Press the power button while the alert is playing to stop it immediately.";
+"FooterAlert" = "Alert mode 0 = off, 1 = vibration, 2 = sound, 3 = vibration + sound. The default channel follows the system ringer/alert volume and remains audible when media volume is zero. Press the power button during an alert to stop it immediately.";
 "AlertMode" = "Alert mode";
 "AlertOff" = "Off";
 "AlertVibrate" = "Vibration only";
@@ -45,7 +45,12 @@
 "FooterDebug" = "Configuration file: %@\nChanges are applied immediately. Debug logging prints message bodies to the system log, enable it only while troubleshooting.";
 "DebugEnabled" = "Verbose logging";
 "LogToFile" = "Also write a log file";
-"TestAlertOnLoad" = "Test alert 3s after SpringBoard loads";
+"RuntimeStatus" = "Alert service status";
+"RuntimeNotRunning" = "Not running";
+"RuntimeReady" = "Running · power observer registered";
+"RuntimePowerDetected" = "Running · power button captured";
+"RuntimeHIDUnavailable" = "Running · power observer unavailable";
+"TestAlertOnLoad" = "Test alert 3s after the alert service starts";
 "TestAlertNow" = "Test the alert now";
 "TestAlertSentTitle" = "Test alert sent";
 "TestAlertSentMessage" = "The alert should start now. Press the power button to stop it.";

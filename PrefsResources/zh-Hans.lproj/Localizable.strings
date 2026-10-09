@@ -17,7 +17,7 @@
 "IgnoreSenders" = "忽略的发件人";
 
 "GroupAlert" = "提醒";
-"FooterAlert" = "提醒方式 0=关闭，1=震动，2=声音，3=震动+声音。音量是相对于系统媒体音量的倍数，不会改动系统音量。提醒过程中按一下电源键即可立即停止。";
+"FooterAlert" = "提醒方式 0=关闭，1=震动，2=声音，3=震动+声音。默认走系统铃声/提醒音量通道，不受媒体音量为 0 影响。提醒过程中按一下电源键即可立即停止。";
 "AlertMode" = "提醒方式";
 "AlertOff" = "关闭";
 "AlertVibrate" = "只震动";
@@ -45,7 +45,12 @@
 "FooterDebug" = "配置文件：%@\n修改立即生效。详细日志会把短信内容写入系统日志，仅在排查问题时开启。";
 "DebugEnabled" = "详细日志";
 "LogToFile" = "同时写入日志文件";
-"TestAlertOnLoad" = "SpringBoard 加载 3 秒后测试提醒";
+"RuntimeStatus" = "提醒服务状态";
+"RuntimeNotRunning" = "未启动";
+"RuntimeReady" = "已启动 · 电源键监听已注册";
+"RuntimePowerDetected" = "已启动 · 已捕获过电源键";
+"RuntimeHIDUnavailable" = "已启动 · 电源键监听不可用";
+"TestAlertOnLoad" = "提醒服务启动 3 秒后测试提醒";
 "TestAlertNow" = "立即测试提醒";
 "TestAlertSentTitle" = "已发送测试提醒";
 "TestAlertSentMessage" = "现在应该开始提醒，按电源键可立即停止。";

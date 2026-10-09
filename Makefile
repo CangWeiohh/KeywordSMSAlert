@@ -35,7 +35,7 @@ export TARGET = iphone:clang:latest:15.4
 # roothide support that ships with roothide/theos (vendor/mod/roothide).
 THEOS_PACKAGE_SCHEME = roothide
 
-PACKAGE_VERSION = 1.1.3
+PACKAGE_VERSION = 1.1.4
 
 # Diagnostic packages for GUI-only on-device A/B testing.
 #
@@ -71,12 +71,13 @@ KSA_SHARED_FILES = \
 
 KSA_CFLAGS = -fobjc-arc -I$(THEOS_PROJECT_DIR)/Sources -Wno-unused-parameter
 
-ifeq ($(KSA_BUILD_VARIANT),no-springboard)
-TWEAK_NAME = KeywordSMSAlertDetector
+ifeq ($(KSA_BUILD_VARIANT),no-hooks)
+TWEAK_NAME = KeywordSMSAlertDetector KeywordSMSAlertAlert
 else ifeq ($(KSA_BUILD_VARIANT),minimal-springboard)
 TWEAK_NAME = KeywordSMSAlertDetector KeywordSMSAlertSpringBoardProbe
 else
-TWEAK_NAME = KeywordSMSAlertDetector KeywordSMSAlertAlert
+# Production and Diagnostic B deliberately install no SpringBoard dylib.
+TWEAK_NAME = KeywordSMSAlertDetector
 endif
 
 # ---------------------------------------------------------------- detector ---
@@ -136,10 +137,10 @@ KeywordSMSAlertPrefs_RESOURCE_DIRS = PrefsResources
 
 include $(THEOS_MAKE_PATH)/bundle.mk
 
-# ------------------------------------------------------------------- tool ---
-# Fallback configuration / test helper, independent of PreferenceLoader:
-#   ksactl status | get <Key> | set <Key> <Value> | keywords add <text> | test | reload
-TOOL_NAME = ksactl
+# ------------------------------------------------------------------ tools ---
+# ksactl remains a GUI-independent maintenance helper.  ksaalertd is the actual
+# production alert host: a mobile launchd job, never injected into SpringBoard.
+TOOL_NAME = ksactl ksaalertd
 
 ksactl_FILES = Sources/Tools/ksactl.m
 ksactl_CFLAGS = -fobjc-arc -Wno-unused-parameter
@@ -147,12 +148,26 @@ ksactl_FRAMEWORKS = Foundation CoreFoundation
 ksactl_LIBRARIES = sqlite3
 ksactl_INSTALL_PATH = /usr/bin
 
+ksaalertd_FILES = \
+	Sources/Daemon/KSAAlertDaemonMain.m \
+	Sources/Daemon/KSAHIDPowerButton.m \
+	Sources/Daemon/KSAHIDEventMatcher.c \
+	Sources/Daemon/KSARuntimeStatus.m \
+	Sources/Daemon/KSAHookInstallerDaemon.m \
+	Sources/KSAAlertManager.m \
+	Sources/KSASoundConverter.m \
+	$(KSA_SHARED_FILES)
+ksaalertd_CFLAGS = $(KSA_CFLAGS) -DKSA_STANDALONE_ALERTD=1
+ksaalertd_FRAMEWORKS = Foundation CoreFoundation AVFoundation AudioToolbox
+ksaalertd_LDFLAGS = -lroothide
+ksaalertd_INSTALL_PATH = /usr/libexec
+ksaalertd_CODESIGN_FLAGS = -SSources/Daemon/ksaalertd.entitlements
+
 include $(THEOS_MAKE_PATH)/tool.mk
 
-# Picking up a freshly installed/updated tweak:
-#   SpringBoard -> alert engine + power button watcher
-#   imagent     -> SMS detector
-INSTALL_TARGET_PROCESSES = SpringBoard imagent
+# Updating detector code only needs imagent restarted.  ksaalertd is managed by its
+# launchd plist/postinst; SpringBoard is intentionally absent from this list.
+INSTALL_TARGET_PROCESSES = imagent
 
 # Keep the generated .deb name tidy (KeywordSMSAlert_<version>_<arch>.deb) while the
 # Debian package identifier stays the conventional com.keyword.smsalert.

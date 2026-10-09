@@ -18,6 +18,7 @@ clang -fobjc-arc -fblocks -g -O1 \
     -framework Foundation \
     "$HERE/host_tests.m" \
     Sources/KSAConfig.m Sources/KSACommon.m Sources/KSADedupCache.m Sources/KSALog.m \
+    Sources/Daemon/KSAHIDEventMatcher.c \
     -o .theos/host-tests/host_tests
 
 exec .theos/host-tests/host_tests

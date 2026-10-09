@@ -89,9 +89,8 @@ if [ ! -d /Library/PreferenceLoader/Preferences ]; then
 fi
 
 # The SMS detector is injected into imagent; restarting that daemon is invisible to
-# the user (launchd brings it straight back) and makes the new detector dylib active
-# without a respring. SpringBoard is restarted by the respring Sileo offers, or by
-# 'ksactl restart' / 'sbreload'.
+# the user (launchd brings it straight back) and activates the new detector.  The
+# alert engine is a standalone launchd job: KeywordSMSAlert never injects SpringBoard.
 if command -v killall >/dev/null 2>&1; then
 	killall -9 imagent 2>/dev/null || true
 	echo "KeywordSMSAlert: imagent restarted (detector reloaded)."
@@ -99,7 +98,19 @@ else
 	echo "KeywordSMSAlert: restart imagent manually: launchctl kickstart -k system/com.apple.imagent"
 fi
 
+chmod 755 /usr/libexec/ksaalertd 2>/dev/null || true
+chmod 644 /Library/LaunchDaemons/com.keyword.smsalert.alertd.plist 2>/dev/null || true
+
+# Best-effort hot activation. If this bootstrap's launchctl rejects bootstrap during
+# dpkg, the job is still loaded automatically by the next userspace restart.
+if command -v launchctl >/dev/null 2>&1; then
+	launchctl bootout system/com.keyword.smsalert.alertd 2>/dev/null || true
+	launchctl bootstrap system /Library/LaunchDaemons/com.keyword.smsalert.alertd.plist 2>/dev/null || true
+	launchctl kickstart -k system/com.keyword.smsalert.alertd 2>/dev/null || true
+fi
+
+echo "KeywordSMSAlert: standalone alert service installed (zero SpringBoard injection)."
 echo "KeywordSMSAlert: settings pane: Settings -> KeywordSMSAlert (needs PreferenceLoader)."
-echo "KeywordSMSAlert: run 'sbreload' (or restart Dopamine) so SpringBoard loads the tweak."
+echo "KeywordSMSAlert: use one Dopamine userspace restart after this architecture upgrade."
 
 exit 0
