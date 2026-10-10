@@ -51,6 +51,9 @@
 "RuntimeSoundPrefix" = "用声：";
 "RuntimeStopRegistered" = "已启动 · 电源键停止已注册";
 "RuntimeStopHID" = "已启动 · 电源键监听（HID）";
+"RuntimeStopHIDNoEvents" = "已启动 · HID 已注册但收不到事件";
+"RuntimeHIDCounters" = " · 事件 %@/键盘 %@";
+"RuntimeHIDLast" = " · 末次 0x%@/0x%@%@";
 "RuntimeStopLock" = "已启动 · 停止方式：锁定/解锁手机";
 "RuntimePowerDetected" = "已启动 · 已触发过提醒";
 "RuntimeHIDUnavailable" = "已启动 · 电源键监听不可用";

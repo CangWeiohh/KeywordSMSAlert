@@ -204,6 +204,14 @@ static void KSATestHIDMatcher(void)
               @"volume-down is not mistaken for power");
     KSA_CHECK(!KSAHIDEventIsPowerButtonDown(11, 0x0C, 0x30, 1),
               @"non-keyboard HID events are ignored");
+    KSA_CHECK(KSAHIDEventIsPowerButtonDown(3, 0xFF01, 0x0B, 1),
+              @"AppleVendor/Screensave (the iPhone lock button) is accepted");
+    KSA_CHECK(KSAHIDEventIsPowerButtonDown(3, 0x07, 0x66, 1),
+              @"Keyboard/Power is accepted");
+    KSA_CHECK(!KSAHIDEventIsPowerButtonDown(3, 0xFF01, 0x0B, 0),
+              @"AppleVendor screensave UP is ignored");
+    KSA_CHECK(!KSAHIDEventIsPowerButtonDown(3, 0x0C, 0x40, 1),
+              @"consumer-menu is not mistaken for power");
 }
 
 int main(int argc, char *argv[])

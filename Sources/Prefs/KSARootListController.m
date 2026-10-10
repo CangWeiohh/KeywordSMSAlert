@@ -323,8 +323,28 @@ static NSString *const KSATriggerNotificationName = @"com.keyword.smsalert.trigg
 
     // Which stop source is live? The precise HID power-button observer is preferred;
     // the lock-state source is the fallback (see KSADisplayStateStop).
+    if ([status[@"HIDDelivering"] boolValue]) {
+        // Events are flowing. Show the raw counters and the last keyboard event, so the
+        // HID usage this device's power button really reports is readable here.
+        NSMutableString *row = [NSMutableString stringWithString:KSAPrefsLocalized(@"RuntimeStopHID")];
+        [row appendFormat:KSAPrefsLocalized(@"RuntimeHIDCounters"),
+         status[@"HIDEventsSeen"] ?: @0,
+         status[@"HIDKeyboardEvents"] ?: @0];
+        if (status[@"HIDLastUsage"] != nil) {
+            [row appendFormat:KSAPrefsLocalized(@"RuntimeHIDLast"),
+             [NSString stringWithFormat:@"%llX", [status[@"HIDLastPage"] unsignedLongLongValue]],
+             [NSString stringWithFormat:@"%llX", [status[@"HIDLastUsage"] unsignedLongLongValue]],
+             [status[@"HIDLastDown"] boolValue] ? @"↓" : @"↑"];
+        }
+        if (status[@"HIDPowerHits"] != nil) {
+            [row appendFormat:@" · %@", status[@"HIDPowerHits"]];
+        }
+        return [row stringByAppendingString:suffix];
+    }
     if ([status[@"HIDAvailable"] boolValue]) {
-        return [KSAPrefsLocalized(@"RuntimeStopHID") stringByAppendingString:suffix];
+        // The client exists but nothing has ever arrived: imagent is not allowed to
+        // receive HID events, so the lock/unlock source is what actually stops alerts.
+        return [KSAPrefsLocalized(@"RuntimeStopHIDNoEvents") stringByAppendingString:suffix];
     }
     if ([status[@"LockStopActive"] boolValue]) {
         NSString *base = [KSAPrefsLocalized(@"RuntimeStopLock") stringByAppendingString:suffix];
