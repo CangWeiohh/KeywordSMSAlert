@@ -9,6 +9,12 @@
 #import "KSALog.h"
 #import "KSASMSDetector.h"
 
+#ifdef KSA_ALERT_IN_DETECTOR
+// The alert engine lives in this same process (imagent), so the watcher can stop a
+// running alert directly - using the database it already reads.
+#import "KSAAlertManager.h"
+#endif
+
 #import <sqlite3.h>
 
 /// Cap per poll so a large backlog can never stall the queue.
@@ -23,6 +29,9 @@ static const int KSASMSWatcherBatchSize = 25;
     BOOL _started;
     NSUInteger _failures;
     NSTimeInterval _scheduledInterval;
+#ifdef KSA_ALERT_IN_DETECTOR
+    NSMutableArray<NSNumber *> *_alertingRowIDs;
+#endif
 }
 
 + (instancetype)sharedInstance
@@ -177,6 +186,16 @@ static const int KSASMSWatcherBatchSize = 25;
                 return;
             }
 
+#ifdef KSA_ALERT_IN_DETECTOR
+            // While an alert is playing, first check whether the user has read the message:
+            // opening the SMS in Messages marks it read, which is the stop gesture in the
+            // stable build (it costs one primary-key lookup per poll, and only while
+            // alerting).
+            if ([self _stopAlertIfTrackedMessageWasRead]) {
+                return;
+            }
+#endif
+
             // First successful pass establishes the baseline: messages that already
             // exist are never alerted on.
             long long maximum = [self _currentMaxRowID];
@@ -243,6 +262,9 @@ static const int KSASMSWatcherBatchSize = 25;
                                                         identity:[NSString stringWithFormat:@"db-rowid-%lld", rowID]
                                                          service:service
                                                           source:@"smsdb"];
+#ifdef KSA_ALERT_IN_DETECTOR
+                [self _rememberAlertedRowID:rowID];
+#endif
             }
             sqlite3_finalize(statement);
             _highWaterRowID = newest;
@@ -253,6 +275,65 @@ static const int KSASMSWatcherBatchSize = 25;
         }
     }
 }
+
+#ifdef KSA_ALERT_IN_DETECTOR
+#pragma mark - Stop when the message is read
+
+/// Remembers a row that may have started an alert, so the next polls can watch it.
+- (void)_rememberAlertedRowID:(long long)rowID
+{
+    if (_alertingRowIDs == nil) {
+        _alertingRowIDs = [NSMutableArray array];
+    }
+    [_alertingRowIDs addObject:@(rowID)];
+    // Only the most recent messages are worth watching (and only while an alert runs).
+    while (_alertingRowIDs.count > 8) {
+        [_alertingRowIDs removeObjectAtIndex:0];
+    }
+}
+
+/// Stopping by "the user read the SMS": iOS sets message.is_read as soon as the message
+/// is opened (or its notification is acted on). This needs NOTHING but the read-only
+/// database handle we already hold - no HID client, no Darwin observer, no extra process -
+/// which is why it is the stop method that ships in the stable build.
+///
+/// Returns YES when the alert was stopped.
+- (BOOL)_stopAlertIfTrackedMessageWasRead
+{
+    if (_alertingRowIDs.count == 0 || _database == NULL) {
+        return NO;
+    }
+    if (![[KSAAlertManager sharedInstance] isAlerting]) {
+        return NO;
+    }
+
+    sqlite3_stmt *statement = NULL;
+    if (sqlite3_prepare_v2(_database, "SELECT is_read FROM message WHERE ROWID = ?", -1,
+                           &statement, NULL) != SQLITE_OK) {
+        return NO;
+    }
+
+    long long readRowID = -1;
+    for (NSNumber *rowID in _alertingRowIDs) {
+        sqlite3_reset(statement);
+        sqlite3_bind_int64(statement, 1, rowID.longLongValue);
+        if (sqlite3_step(statement) == SQLITE_ROW && sqlite3_column_int(statement, 0) != 0) {
+            readRowID = rowID.longLongValue;
+            break;
+        }
+    }
+    sqlite3_finalize(statement);
+
+    if (readRowID < 0) {
+        return NO;
+    }
+
+    KSAInfo(@"message ROWID %lld was marked read - stopping the alert", readRowID);
+    [_alertingRowIDs removeAllObjects];
+    [[KSAAlertManager sharedInstance] stopAlertWithReason:@"SMS marked as read"];
+    return YES;
+}
+#endif
 
 - (BOOL)_serviceIsAcceptable:(NSString *)service config:(KSAConfig *)config
 {

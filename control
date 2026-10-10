@@ -1,6 +1,6 @@
 Package: com.keyword.smsalert
 Name: KeywordSMSAlert
-Version: 1.3.1
+Version: 1.4.0
 Architecture: iphoneos-arm64e
 Description: Alerts (vibration + ringer-channel sound) when an incoming SMS matches a keyword. Detection, the alert engine and the event-driven power-button stop source all run inside one dylib injected into imagent: no SpringBoard injection, no launchd service, no extra process. Includes a Settings pane (needs PreferenceLoader) and the ksactl helper. Designed for Dopamine RootHide / roothide on iOS 15.4.1.
 Maintainer: KeywordSMSAlert

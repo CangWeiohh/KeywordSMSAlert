@@ -17,7 +17,7 @@
 "IgnoreSenders" = "Ignored senders";
 
 "GroupAlert" = "Alert";
-"FooterAlert" = "Alert mode 0 = off, 1 = vibration, 2 = sound, 3 = vibration + sound. The default channel follows the system ringer/alert volume and remains audible when media volume is zero. Press the power button during an alert to stop it immediately.";
+"FooterAlert" = "Alert mode 0 = off, 1 = vibration, 2 = sound, 3 = vibration + sound. The default channel follows the system ringer/alert volume and remains audible when media volume is zero. To stop an alert, open the SMS in Messages (marking it read); otherwise it ends by itself after the duration set below.";
 "AlertMode" = "Alert mode";
 "AlertOff" = "Off";
 "AlertVibrate" = "Vibration only";
