@@ -39,6 +39,7 @@
 #ifdef KSA_ALERT_IN_DETECTOR
 #import "KSAAlertManager.h"
 #import "Daemon/KSADisplayStateStop.h"
+#import "Daemon/KSAHIDPowerButton.h"
 #import "Daemon/KSARuntimeStatus.h"
 #endif
 
@@ -81,6 +82,17 @@
 
                 KSARuntimeStatusReset();
                 [[KSAAlertManager sharedInstance] start];
+
+                // Preferred stop source: observe the physical power button through IOKit
+                // (observation only - the event is never dispatched or consumed). imagent
+                // has no HID entitlement, so this may not be honoured; when it is not, the
+                // lock-state source below is the fallback and the status row says which one
+                // is live (no terminal needed).
+                [[KSAHIDPowerButton sharedInstance] start];
+                BOOL hidAvailable = [KSAHIDPowerButton sharedInstance].isAvailable;
+                KSARuntimeStatusUpdate(@{ @"PowerButtonSource": hidAvailable ? @"hid" : @"lockstate" });
+                KSAInfo(@"power button stop source: %@", hidAvailable ? @"HID observer" : @"lock state (fallback)");
+
                 [[KSADisplayStateStop sharedInstance] start];
                 [[KSASMSDetector sharedInstance] start];
                 [[KSASMSWatcher sharedInstance] start];

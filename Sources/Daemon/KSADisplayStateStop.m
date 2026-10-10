@@ -1,39 +1,35 @@
 //
 //  KSADisplayStateStop.m
 //
-//  Fallback stop source: "the user pressed the power button" is inferred from the
-//  display / lock state, because imagent (where this runs) has no HID entitlement and
-//  this build deliberately starts no second process.
+//  Lock-state based stop source - the SAFE fallback used alongside the HID power-button
+//  observer (see KSAHIDPowerButton).
 //
-//  The hard part is that the *same* transitions are produced by the system itself:
+//  WHY THERE ARE NO DISPLAY-STATE RULES ANY MORE
 //
-//    * the incoming SMS notification lights the lock screen, and that notification
-//      wake times out a few seconds later -> 显示 熄屏 -> 亮屏 -> 熄屏
-//    * auto-lock / auto-dim                               -> 显示 亮屏 -> 熄屏
-//    * raise to wake                                      -> 显示 熄屏 -> 亮屏
+//  Earlier versions inferred "the power button was pressed" from the display turning on
+//  or off. That cannot be made correct: the display is woken and blanked by many things
+//  that have nothing to do with the button:
 //
-//  Treating any of those as "power button pressed" makes the alert kill itself - which
-//  is exactly what happened when the notification wake timed out.
+//    * the incoming SMS notification lights the lock screen   (熄屏 -> 亮屏)
+//    * that notification wake times out a few seconds later   (亮屏 -> 熄屏)
+//    * a tap on the screen (tap to wake)                      (熄屏 -> 亮屏)
+//    * raise to wake / picking the phone up                   (熄屏 -> 亮屏)
+//    * auto-dim / auto-lock                                   (亮屏 -> 熄屏)
 //
-//  Rules used here (each one is deliberate):
+//  Every attempt to "fix" one of those only exposed the next one: the alert was first
+//  killed by the notification wake, then by the notification timing out, then by the
+//  user tapping the screen. Display state is therefore now recorded for diagnostics only
+//  and NEVER stops an alert.
 //
-//    1. display OFF -> ON, more than `kKSAScreenWakeGrace` after the alert started:
-//       a power press on a sleeping phone  -> STOP. A wake inside the grace window is
-//       the incoming notification, and it is remembered so that rule 3 can pair it up.
-//    2. lock state becomes "locked": a real lock action -> STOP. (A notification wake
-//       never changes the lock state, so this cannot be a false positive from one.)
-//    3. display ON -> OFF:
-//         a. the wake we ignored in rule 1 for THIS alert timed out -> IGNORE.
-//         b. the device is currently locked -> IGNORE: this is the notification wake
-//            timing out (or a first power press on the lock screen, which is
-//            indistinguishable); the alert keeps going and the next press stops it.
-//         c. otherwise (the user was actively using an unlocked phone) -> STOP.
+//  What remains is the lock state, which none of those incidental events change:
 //
-//  Net effect: the alert survives the notification's screen wake *and* its timeout.
-//  To stop it: press power while the screen is dark (wakes it -> STOP), or press power
-//  while using an unlocked phone (locks it -> STOP). If the screen happens to be
-//  showing the lock screen, the first press is treated as the notification timing out
-//  and a second press stops the alert.
+//    * 未锁定 -> 已锁定 : the user locked the phone (power press while using it, or
+//                         auto-lock). A notification or a tap never locks it.
+//    * 已锁定 -> 未锁定 : the user actually unlocked it (passcode / Face ID), i.e. they
+//                         are looking at the phone and have seen the reminder.
+//
+//  Both are deliberate user actions, so neither can be triggered by a notification, a
+//  tap on the lock screen or raise to wake.
 //
 
 #import "KSADisplayStateStop.h"
@@ -43,11 +39,6 @@
 #import "KSALog.h"
 
 #import <notify.h>
-#import <math.h>
-
-/// A screen wake inside this window after the alert started is attributed to the
-/// incoming SMS notification rather than to the power button.
-static const NSTimeInterval kKSAScreenWakeGrace = 4.0;
 
 @implementation KSADisplayStateStop
 {
@@ -59,10 +50,7 @@ static const NSTimeInterval kKSAScreenWakeGrace = 4.0;
     BOOL _haveLockState;
     uint64_t _lastLockState;
     BOOL _locked;
-
-    /// Alert start time for which rule 1 ignored a notification wake (0 = none), so
-    /// rule 3a can recognise that wake timing out and leave the alert alone.
-    NSTimeInterval _notificationWakeAlertStart;
+    NSUInteger _displayTransitions;
 }
 
 + (instancetype)sharedInstance
@@ -110,8 +98,6 @@ static const NSTimeInterval kKSAScreenWakeGrace = 4.0;
         [self ksa_lockStateChanged:state];
     });
 
-    // The lock state is needed for rule 3b, and a notification wake produces no lock
-    // state change at all - so read it once here instead of waiting for a callback.
     uint64_t currentLockState = UINT64_MAX;
     if (lockState == NOTIFY_STATUS_OK && notify_get_state(_lockToken, &currentLockState) == NOTIFY_STATUS_OK) {
         _haveLockState = YES;
@@ -123,60 +109,41 @@ static const NSTimeInterval kKSAScreenWakeGrace = 4.0;
     BOOL lockOK = (lockState == NOTIFY_STATUS_OK);
 
     KSARuntimeStatusUpdate(@{
-        @"FallbackStopActive": @(displayOK || lockOK),
+        @"LockStopActive": @(lockOK),
         @"FallbackDisplayNotification": @(displayOK),
         @"FallbackLockNotification": @(lockOK),
         @"FallbackInitialLocked": @(_locked)
     });
 
-    KSAInfo(@"power-button stop source ready (displayStatus=%d, lockstate=%d, locked=%d)",
-            displayOK, lockOK, _locked);
+    KSAInfo(@"lock-state stop source ready (displayStatus=%d, lockstate=%d, locked=%d) - "
+            @"display changes never stop an alert", displayOK, lockOK, _locked);
 }
 
+/// Diagnostics only: display transitions also come from notifications, tap-to-wake,
+/// raise-to-wake and auto-dim, so they must never stop an alert.
 - (void)ksa_displayStateChanged:(uint64_t)state
 {
-    // The first callback after registration may simply report the current state; only
-    // a real transition counts.
     if (!_haveDisplayState) {
         _haveDisplayState = YES;
         _lastDisplayState = state;
-        KSADebug(@"display state baseline = %llu (locked=%d)", (unsigned long long)state, _locked);
+        KSADebug(@"display baseline = %llu (locked=%d)", (unsigned long long)state, _locked);
         return;
     }
     if (state == _lastDisplayState) {
         return;
     }
     _lastDisplayState = state;
+    _displayTransitions++;
 
     NSTimeInterval startedAt = [KSAAlertManager sharedInstance].lastAlertStartedAt;
     NSTimeInterval sinceStart = startedAt > 0 ? (KSANow() - startedAt) : -1;
+    KSAInfo(@"display %@ (%.1fs into the alert, locked=%d) - ignored, only lock changes stop an alert",
+            state == 1 ? @"turned on" : @"turned off", sinceStart, _locked);
 
-    if (state == 1) {
-        // ---- rule 1: screen turned on -------------------------------------------
-        if (sinceStart >= 0 && sinceStart < kKSAScreenWakeGrace) {
-            _notificationWakeAlertStart = startedAt;
-            KSAInfo(@"screen woke %.1fs after the alert started - that is the incoming "
-                    @"notification, alert continues", sinceStart);
-            return;
-        }
-        [self ksa_stopIfAlertingWithReason:@"screen turned on (power button on a sleeping phone)"];
-        return;
-    }
-
-    // ---- rule 3: screen turned off ----------------------------------------------
-    if (_notificationWakeAlertStart > 0 && startedAt > 0 &&
-        fabs(_notificationWakeAlertStart - startedAt) < 0.001) {
-        KSAInfo(@"screen went dark after the notification wake - alert continues "
-                @"(press power again to stop it)");
-        _notificationWakeAlertStart = 0;
-        return;
-    }
-    if (_locked) {
-        KSAInfo(@"screen turned off while the device is locked - treating it as the "
-                @"notification wake timing out, alert continues (press power again to stop it)");
-        return;
-    }
-    [self ksa_stopIfAlertingWithReason:@"screen turned off (power button)"];
+    KSARuntimeStatusUpdate(@{
+        @"LastDisplayTransitionAt": @(KSANow()),
+        @"DisplayTransitions": @(_displayTransitions)
+    });
 }
 
 - (void)ksa_lockStateChanged:(uint64_t)state
@@ -193,12 +160,11 @@ static const NSTimeInterval kKSAScreenWakeGrace = 4.0;
     _lastLockState = state;
     _locked = (state == 1);
 
-    if (state != 1) {
-        return;   // unlocked: nothing to stop
+    if (state == 1) {
+        [self ksa_stopIfAlertingWithReason:@"phone locked by the user"];
+    } else {
+        [self ksa_stopIfAlertingWithReason:@"phone unlocked - the user has seen it"];
     }
-
-    // ---- rule 2: a real lock action --------------------------------------------
-    [self ksa_stopIfAlertingWithReason:@"device locked (power button)"];
 }
 
 - (void)ksa_stopIfAlertingWithReason:(NSString *)reason
@@ -207,9 +173,8 @@ static const NSTimeInterval kKSAScreenWakeGrace = 4.0;
         KSADebug(@"%@ while no alert is running (nothing to stop)", reason);
         return;
     }
-    KSAInfo(@"stopping alert via power-button stop source (%@)", reason);
-    [[KSAAlertManager sharedInstance] stopAlertWithReason:
-     [NSString stringWithFormat:@"%@", reason]];
+    KSAInfo(@"stopping alert (%@)", reason);
+    [[KSAAlertManager sharedInstance] stopAlertWithReason:reason];
 }
 
 @end

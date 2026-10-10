@@ -49,7 +49,9 @@
 "RuntimeNotRunning" = "未启动";
 "RuntimeReady" = "已启动 · 提醒引擎在 imagent 内";
 "RuntimeSoundPrefix" = "用声：";
-"RuntimeStopRegistered" = "已启动 · 电源键停止已注册（屏幕状态监听）";
+"RuntimeStopRegistered" = "已启动 · 电源键停止已注册";
+"RuntimeStopHID" = "已启动 · 电源键监听（HID）";
+"RuntimeStopLock" = "已启动 · 停止方式：锁定/解锁手机";
 "RuntimePowerDetected" = "已启动 · 已触发过提醒";
 "RuntimeHIDUnavailable" = "已启动 · 电源键监听不可用";
 "TestAlertOnLoad" = "提醒服务启动 3 秒后测试提醒";

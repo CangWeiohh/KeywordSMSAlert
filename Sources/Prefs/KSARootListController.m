@@ -321,11 +321,17 @@ static NSString *const KSATriggerNotificationName = @"com.keyword.smsalert.trigg
         ? [NSString stringWithFormat:@" · %@%@", KSAPrefsLocalized(@"RuntimeSoundPrefix"), sound]
         : @"";
 
-    if ([status[@"FallbackStopActive"] boolValue]) {
-        return [KSAPrefsLocalized(@"RuntimeStopRegistered") stringByAppendingString:suffix];
+    // Which stop source is live? The precise HID power-button observer is preferred;
+    // the lock-state source is the fallback (see KSADisplayStateStop).
+    if ([status[@"HIDAvailable"] boolValue]) {
+        return [KSAPrefsLocalized(@"RuntimeStopHID") stringByAppendingString:suffix];
     }
-    if (status[@"LastTriggerAt"] != nil) {
-        return [KSAPrefsLocalized(@"RuntimePowerDetected") stringByAppendingString:suffix];
+    if ([status[@"LockStopActive"] boolValue]) {
+        NSString *base = [KSAPrefsLocalized(@"RuntimeStopLock") stringByAppendingString:suffix];
+        if (status[@"HIDStatus"] != nil) {
+            base = [NSString stringWithFormat:@"%@（%@）", base, status[@"HIDStatus"]];
+        }
+        return base;
     }
     return [KSAPrefsLocalized(@"RuntimeReady") stringByAppendingString:suffix];
 }

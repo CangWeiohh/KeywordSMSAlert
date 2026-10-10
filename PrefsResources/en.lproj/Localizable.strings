@@ -49,7 +49,9 @@
 "RuntimeNotRunning" = "Not running";
 "RuntimeReady" = "Running · alert engine inside imagent";
 "RuntimeSoundPrefix" = "sound: ";
-"RuntimeStopRegistered" = "Running · power-button stop registered (screen state)";
+"RuntimeStopRegistered" = "Running · power-button stop registered";
+"RuntimeStopHID" = "Running · power button observer (HID)";
+"RuntimeStopLock" = "Running · stop source: lock/unlock the phone";
 "RuntimePowerDetected" = "Running · an alert has fired";
 "RuntimeHIDUnavailable" = "Running · power observer unavailable";
 "TestAlertOnLoad" = "Test alert 3s after the alert service starts";
