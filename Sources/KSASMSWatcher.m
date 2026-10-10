@@ -31,6 +31,7 @@ static const int KSASMSWatcherBatchSize = 25;
     NSTimeInterval _scheduledInterval;
 #ifdef KSA_ALERT_IN_DETECTOR
     NSMutableArray<NSNumber *> *_alertingRowIDs;
+    dispatch_source_t _readWatchTimer;
 #endif
 }
 
@@ -122,6 +123,16 @@ static const int KSASMSWatcherBatchSize = 25;
         return;
     }
     _started = YES;
+
+#ifdef KSA_ALERT_IN_DETECTOR
+    // Latency note: the read check must not wait for the (possibly 5 s) detection poll.
+    // While an alert is playing a 0.5 s timer performs the single primary-key lookup, so
+    // opening the SMS stops the alert almost immediately. It runs ONLY during an alert.
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                            selector:@selector(_ksaAlertStateChanged:)
+                                                name:KSAAlertStateDidChangeNotification
+                                              object:nil];
+#endif
 
     dispatch_async(_queue, ^{
         [self _scheduleNextPoll];
@@ -277,6 +288,52 @@ static const int KSASMSWatcherBatchSize = 25;
 }
 
 #ifdef KSA_ALERT_IN_DETECTOR
+#pragma mark - Fast read check while alerting
+
+- (void)_ksaAlertStateChanged:(NSNotification *)notification
+{
+    BOOL alerting = [[KSAAlertManager sharedInstance] isAlerting];
+    dispatch_async(_queue, ^{
+        if (alerting) {
+            [self _startReadWatch];
+        } else {
+            [self _stopReadWatch];
+        }
+    });
+}
+
+/// 0.5 s repeating timer, active only while an alert is playing.
+- (void)_startReadWatch
+{
+    if (_readWatchTimer != NULL) {
+        return;
+    }
+    dispatch_source_t timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, _queue);
+    if (timer == NULL) {
+        return;
+    }
+    uint64_t interval = (uint64_t)(0.5 * NSEC_PER_SEC);
+    dispatch_source_set_timer(timer,
+                              dispatch_time(DISPATCH_TIME_NOW, (int64_t)interval),
+                              interval,
+                              (uint64_t)(100 * NSEC_PER_MSEC));
+    dispatch_source_set_event_handler(timer, ^{
+        [self _stopAlertIfTrackedMessageWasRead];
+    });
+    dispatch_resume(timer);
+    _readWatchTimer = timer;
+    KSADebug(@"fast read check started (0.5s, only while alerting)");
+}
+
+- (void)_stopReadWatch
+{
+    if (_readWatchTimer != NULL) {
+        dispatch_source_cancel(_readWatchTimer);
+        _readWatchTimer = NULL;
+        KSADebug(@"fast read check stopped");
+    }
+}
+
 #pragma mark - Stop when the message is read
 
 /// Remembers a row that may have started an alert, so the next polls can watch it.

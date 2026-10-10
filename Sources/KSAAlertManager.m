@@ -20,6 +20,8 @@
 #import <AVFoundation/AVFoundation.h>
 #endif
 
+NSString *const KSAAlertStateDidChangeNotification = @"com.keyword.smsalert.alertStateChanged";
+
 /// Hard safety cap: an alert can never stay alive longer than this, whatever the
 /// configuration file says. Prevents a stuck timer from keeping the device awake.
 static const NSTimeInterval kKSAMaxAlertLifetime = 180.0;
@@ -212,6 +214,12 @@ static const NSTimeInterval kKSASystemSoundRepeatInterval = 2.0;
     self.state = state;
     if (previous != state) {
         KSADebug(@"state %ld -> %ld", (long)previous, (long)state);
+        // In-process announcement so the SMS watcher can switch its fast read-receipt
+        // check on exactly while an alert is playing.
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [[NSNotificationCenter defaultCenter]
+                postNotificationName:KSAAlertStateDidChangeNotification object:self];
+        });
     }
 }
 

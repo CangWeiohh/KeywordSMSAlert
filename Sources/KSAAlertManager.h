@@ -35,6 +35,10 @@ typedef NS_ENUM(NSInteger, KSAAlertState) {
 
 @end
 
+/// Posted (in-process, on the main queue) whenever the alert state actually changes.
+/// The SMS watcher uses it to run a fast read-receipt check only while an alert plays.
+FOUNDATION_EXPORT NSString *const KSAAlertStateDidChangeNotification;
+
 @interface KSAAlertManager : NSObject
 
 + (instancetype)sharedInstance;
