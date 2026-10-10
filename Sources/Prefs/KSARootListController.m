@@ -321,49 +321,10 @@ static NSString *const KSATriggerNotificationName = @"com.keyword.smsalert.trigg
         ? [NSString stringWithFormat:@" · %@%@", KSAPrefsLocalized(@"RuntimeSoundPrefix"), sound]
         : @"";
 
-    // Which stop source is live? The precise HID power-button observer is preferred;
-    // the lock-state source is the fallback (see KSADisplayStateStop).
-    if ([status[@"HIDDelivering"] boolValue]) {
-        // Events are flowing. Show the raw counters and the last keyboard event, so the
-        // HID usage this device's power button really reports is readable here.
-        NSMutableString *row = [NSMutableString stringWithString:KSAPrefsLocalized(@"RuntimeStopHID")];
-        [row appendFormat:KSAPrefsLocalized(@"RuntimeHIDCounters"),
-         status[@"HIDEventsSeen"] ?: @0,
-         status[@"HIDKeyboardEvents"] ?: @0];
-        if (status[@"HIDLastUsage"] != nil) {
-            [row appendFormat:KSAPrefsLocalized(@"RuntimeHIDLast"),
-             [NSString stringWithFormat:@"%llX", [status[@"HIDLastPage"] unsignedLongLongValue]],
-             [NSString stringWithFormat:@"%llX", [status[@"HIDLastUsage"] unsignedLongLongValue]],
-             [status[@"HIDLastDown"] boolValue] ? @"↓" : @"↑"];
-        }
-        if (status[@"HIDPowerHits"] != nil) {
-            [row appendFormat:@" · %@", status[@"HIDPowerHits"]];
-        }
-        return [row stringByAppendingString:suffix];
-    }
-    if ([status[@"HIDAvailable"] boolValue]) {
-        // The client exists but no event ever arrived. Report how many HID services are
-        // even visible and which delivery strategy is currently active: 0 services means
-        // the sandbox blocks the HID event system for imagent, whatever we try.
-        NSString *base = KSAPrefsLocalized(@"RuntimeStopHIDNoEvents");
-        NSMutableString *detail = [NSMutableString string];
-        if (status[@"HIDServices"] != nil) {
-            [detail appendFormat:@"%@ %@", KSAPrefsLocalized(@"RuntimeHIDServices"), status[@"HIDServices"]];
-        }
-        if (status[@"HIDDelivery"] != nil) {
-            [detail appendFormat:@"%@%@", detail.length > 0 ? @" · " : @"", status[@"HIDDelivery"]];
-        }
-        if (detail.length > 0) {
-            base = [NSString stringWithFormat:@"%@（%@）", base, detail];
-        }
-        return [base stringByAppendingString:suffix];
-    }
+    // 1.3.0: stops are based on the lock state only - the IOHID observer was removed
+    // (it never delivered an event, and it brought the boot black screen back).
     if ([status[@"LockStopActive"] boolValue]) {
-        NSString *base = [KSAPrefsLocalized(@"RuntimeStopLock") stringByAppendingString:suffix];
-        if (status[@"HIDStatus"] != nil) {
-            base = [NSString stringWithFormat:@"%@（%@）", base, status[@"HIDStatus"]];
-        }
-        return base;
+        return [KSAPrefsLocalized(@"RuntimeStopLock") stringByAppendingString:suffix];
     }
     return [KSAPrefsLocalized(@"RuntimeReady") stringByAppendingString:suffix];
 }

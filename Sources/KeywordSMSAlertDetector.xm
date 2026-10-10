@@ -39,7 +39,6 @@
 #ifdef KSA_ALERT_IN_DETECTOR
 #import "KSAAlertManager.h"
 #import "Daemon/KSADisplayStateStop.h"
-#import "Daemon/KSAHIDPowerButton.h"
 #import "Daemon/KSARuntimeStatus.h"
 #endif
 
@@ -83,16 +82,20 @@
                 KSARuntimeStatusReset();
                 [[KSAAlertManager sharedInstance] start];
 
-                // Preferred stop source: observe the physical power button through IOKit
-                // (observation only - the event is never dispatched or consumed). imagent
-                // has no HID entitlement, so this may not be honoured; when it is not, the
-                // lock-state source below is the fallback and the status row says which one
-                // is live (no terminal needed).
-                [[KSAHIDPowerButton sharedInstance] start];
-                BOOL hidAvailable = [KSAHIDPowerButton sharedInstance].isAvailable;
-                KSARuntimeStatusUpdate(@{ @"PowerButtonSource": hidAvailable ? @"hid" : @"lockstate" });
-                KSAInfo(@"power button stop source: %@", hidAvailable ? @"HID observer" : @"lock state (fallback)");
-
+                // 1.3.0: the IOHID observer is NOT started any more.
+                //
+                // Measurements on this device: creating the client succeeded, but events
+                // never arrived (it never stopped a single alert), and 1.2.9 - which added
+                // an IOHIDEventSystemClientCopyServices probe plus three clients - brought
+                // the persistent black screen back. A HID monitoring client and the
+                // system-wide event machinery (which also drives display wake) apparently do
+                // not tolerate each other here, so the whole approach is dropped: it never
+                // worked, and it is not worth risking the device for.
+                //
+                // Stopping an alert is therefore based on the lock state only (see
+                // KSADisplayStateStop): a notification, a tap on the screen, raise-to-wake
+                // and auto-dim can never stop an alert, while locking or unlocking the phone
+                // (both deliberate user actions) can.
                 [[KSADisplayStateStop sharedInstance] start];
                 [[KSASMSDetector sharedInstance] start];
                 [[KSASMSWatcher sharedInstance] start];
