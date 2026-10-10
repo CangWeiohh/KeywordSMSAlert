@@ -48,6 +48,7 @@
 "RuntimeStatus" = "Alert service status";
 "RuntimeNotRunning" = "Not running";
 "RuntimeReady" = "Running · alert engine inside imagent";
+"RuntimeReadyStable" = "Running · alerts end after their duration (stable)";
 "RuntimeSoundPrefix" = "sound: ";
 "RuntimeStopRegistered" = "Running · power-button stop registered";
 "RuntimeStopHID" = "Running · power button observer (HID)";

@@ -38,7 +38,6 @@
 
 #ifdef KSA_ALERT_IN_DETECTOR
 #import "KSAAlertManager.h"
-#import "Daemon/KSADisplayStateStop.h"
 #import "Daemon/KSARuntimeStatus.h"
 #endif
 
@@ -82,21 +81,23 @@
                 KSARuntimeStatusReset();
                 [[KSAAlertManager sharedInstance] start];
 
-                // 1.3.0: the IOHID observer is NOT started any more.
+                // 1.3.1 STABLE: the alert engine and the SMS poller, nothing else.
                 //
-                // Measurements on this device: creating the client succeeded, but events
-                // never arrived (it never stopped a single alert), and 1.2.9 - which added
-                // an IOHIDEventSystemClientCopyServices probe plus three clients - brought
-                // the persistent black screen back. A HID monitoring client and the
-                // system-wide event machinery (which also drives display wake) apparently do
-                // not tolerate each other here, so the whole approach is dropped: it never
-                // worked, and it is not worth risking the device for.
+                // Removed on purpose, after on-device failures:
+                //   * the IOHID power-button observer - it never delivered a single event,
+                //     and every attempt to make it work risked the boot sequence;
+                //   * the display/lock Darwin observers - inferring "power button" from the
+                //     display is impossible (notifications, taps, raise-to-wake and
+                //     auto-dim all produce the same transitions), and lock-state based
+                //     stopping is not worth any additional background machinery.
                 //
-                // Stopping an alert is therefore based on the lock state only (see
-                // KSADisplayStateStop): a notification, a tap on the screen, raise-to-wake
-                // and auto-dim can never stop an alert, while locking or unlocking the phone
-                // (both deliberate user actions) can.
-                [[KSADisplayStateStop sharedInstance] start];
+                // What remains has been verified on this device: read-only sms.db polling
+                // (since 1.1.x) and the in-process alert engine (vibration + ringer-channel
+                // sound, verified working in 1.2.0). An alert ends after its configured
+                // SoundDuration / VibrationDuration, or when the "test alert" button is used
+                // with the configuration switched off.
+                KSAInfo(@"stable build: no HID observer, no display/lock observers, "
+                        @"alerts end after their configured duration");
                 [[KSASMSDetector sharedInstance] start];
                 [[KSASMSWatcher sharedInstance] start];
 

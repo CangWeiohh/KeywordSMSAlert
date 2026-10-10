@@ -50,7 +50,7 @@ export TARGET = iphone:clang:latest:15.4
 # roothide support that ships with roothide/theos (vendor/mod/roothide).
 THEOS_PACKAGE_SCHEME = roothide
 
-PACKAGE_VERSION = 1.3.0
+PACKAGE_VERSION = 1.3.1
 
 KSA_BUILD_VARIANT ?= imagent
 
@@ -92,7 +92,6 @@ KSA_DETECTOR_ALERT_FILES = \
 	Sources/KSAAlertManager.m \
 	Sources/KSASoundConverter.m \
 	Sources/Daemon/KSAHookInstallerDaemon.m \
-	Sources/Daemon/KSADisplayStateStop.m \
 	Sources/Daemon/KSARuntimeStatus.m
 KSA_DETECTOR_ALERT_CFLAGS = -DKSA_ALERT_IN_DETECTOR=1 -DKSA_NO_MEDIA_CHANNEL=1 -DKSA_STANDALONE_ALERTD=1
 KSA_DETECTOR_ALERT_FRAMEWORKS = AudioToolbox

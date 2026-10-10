@@ -321,12 +321,7 @@ static NSString *const KSATriggerNotificationName = @"com.keyword.smsalert.trigg
         ? [NSString stringWithFormat:@" · %@%@", KSAPrefsLocalized(@"RuntimeSoundPrefix"), sound]
         : @"";
 
-    // 1.3.0: stops are based on the lock state only - the IOHID observer was removed
-    // (it never delivered an event, and it brought the boot black screen back).
-    if ([status[@"LockStopActive"] boolValue]) {
-        return [KSAPrefsLocalized(@"RuntimeStopLock") stringByAppendingString:suffix];
-    }
-    return [KSAPrefsLocalized(@"RuntimeReady") stringByAppendingString:suffix];
+    return [KSAPrefsLocalized(@"RuntimeReadyStable") stringByAppendingString:suffix];
 }
 
 - (void)ksaWriteText:(id)value specifier:(PSSpecifier *)specifier
