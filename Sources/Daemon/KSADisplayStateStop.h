@@ -15,13 +15,23 @@
 //  state with notify_get_state; SagerNet/sing-box-for-apple does the same for both
 //  names. Neither needs an entitlement.
 //
-//  Semantics: while an alert is running, any display on/off transition stops it.
-//    * screen ON  + power press -> display goes off   (lock)
-//    * screen OFF + power press -> display goes on    (wake)
-//  Both are exactly "the user pressed the power button". A raise-to-wake also
-//  triggers it, which is harmless: the user is picking the phone up anyway.
+//  Semantics (the system produces the same transitions as the power button, so each
+//  case is handled explicitly):
 //
-
+//    * display OFF -> ON well after the alert started  -> STOP (power press on a
+//      sleeping phone). A wake right after the alert started is the incoming SMS
+//      notification and is ignored - and remembered.
+//    * lock state becomes locked                       -> STOP (a real lock action; a
+//      notification wake never changes the lock state).
+//    * display ON -> OFF                               -> STOP only when the user was
+//      using an unlocked phone. If it follows the notification wake, or the device is
+//      locked, it is the notification's own timeout / auto-dim and the alert keeps
+//      running (press power again to stop it).
+//
+//  Before this, "display ON -> OFF" always stopped the alert, so the incoming SMS
+//  notification woke the lock screen and a few seconds later its timeout killed the
+//  alert - the vibration and the sound stopped together.
+//
 #ifndef KSA_DISPLAY_STATE_STOP_H
 #define KSA_DISPLAY_STATE_STOP_H
 
