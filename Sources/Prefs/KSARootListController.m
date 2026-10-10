@@ -342,9 +342,21 @@ static NSString *const KSATriggerNotificationName = @"com.keyword.smsalert.trigg
         return [row stringByAppendingString:suffix];
     }
     if ([status[@"HIDAvailable"] boolValue]) {
-        // The client exists but nothing has ever arrived: imagent is not allowed to
-        // receive HID events, so the lock/unlock source is what actually stops alerts.
-        return [KSAPrefsLocalized(@"RuntimeStopHIDNoEvents") stringByAppendingString:suffix];
+        // The client exists but no event ever arrived. Report how many HID services are
+        // even visible and which delivery strategy is currently active: 0 services means
+        // the sandbox blocks the HID event system for imagent, whatever we try.
+        NSString *base = KSAPrefsLocalized(@"RuntimeStopHIDNoEvents");
+        NSMutableString *detail = [NSMutableString string];
+        if (status[@"HIDServices"] != nil) {
+            [detail appendFormat:@"%@ %@", KSAPrefsLocalized(@"RuntimeHIDServices"), status[@"HIDServices"]];
+        }
+        if (status[@"HIDDelivery"] != nil) {
+            [detail appendFormat:@"%@%@", detail.length > 0 ? @" · " : @"", status[@"HIDDelivery"]];
+        }
+        if (detail.length > 0) {
+            base = [NSString stringWithFormat:@"%@（%@）", base, detail];
+        }
+        return [base stringByAppendingString:suffix];
     }
     if ([status[@"LockStopActive"] boolValue]) {
         NSString *base = [KSAPrefsLocalized(@"RuntimeStopLock") stringByAppendingString:suffix];

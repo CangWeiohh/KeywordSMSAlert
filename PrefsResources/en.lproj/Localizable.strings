@@ -53,6 +53,7 @@
 "RuntimeStopHID" = "Running · power button observer (HID)";
 "RuntimeStopHIDNoEvents" = "Running · HID registered but no events arrive";
 "RuntimeHIDCounters" = " · events %@/keys %@";
+"RuntimeHIDServices" = "HID services visible";
 "RuntimeHIDLast" = " · last 0x%@/0x%@%@";
 "RuntimeStopLock" = "Running · stop source: lock/unlock the phone";
 "RuntimePowerDetected" = "Running · an alert has fired";
