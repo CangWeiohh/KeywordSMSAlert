@@ -3,11 +3,12 @@
 //
 
 #import "KSARuntimeStatus.h"
+#import "KSACommon.h"
 #import <unistd.h>
 
 NSString *KSARuntimeStatusPath(void)
 {
-    return @"/var/mobile/Library/Preferences/com.keyword.smsalert.runtime.plist";
+    return KSA_RUNTIME_STATUS_PATH;
 }
 
 static NSMutableDictionary<NSString *, id> *KSAStatusDictionary(void)
@@ -32,9 +33,14 @@ void KSARuntimeStatusReset(void)
 {
     @synchronized (KSAStatusDictionary()) {
         [KSAStatusDictionary() removeAllObjects];
-        KSAStatusDictionary()[@"DaemonRunning"] = @YES;
+        KSAStatusDictionary()[@"EngineRunning"] = @YES;
         KSAStatusDictionary()[@"StartedAt"] = @([[NSDate date] timeIntervalSince1970]);
-        KSAStatusDictionary()[@"Architecture"] = @"launchd-no-springboard";
+        // Report the process the engine actually lives in. Older builds wrote the
+        // literal "launchd-no-springboard" here, which was true only of a design that
+        // no longer exists and made every log read misleading.
+        KSAStatusDictionary()[@"Architecture"] = @"imagent-in-process";
+        KSAStatusDictionary()[@"Process"] = KSAProcessName() ?: @"?";
+        KSAStatusDictionary()[@"BundleID"] = KSAProcessBundleIdentifier() ?: @"?";
         KSAWriteStatusLocked();
     }
 }

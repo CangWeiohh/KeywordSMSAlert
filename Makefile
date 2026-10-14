@@ -20,7 +20,10 @@
 #     * read-only polling of sms.db (no hooks),
 #     * keyword matching,
 #     * the alert engine itself (vibration + ringer/alert-channel sound),
-#     * an event-driven stop source (display/lock Darwin notifications).
+#     * the stop source: while an alert plays, the ROWID that started it is
+#       re-read (is_read) and the alert stops as soon as the message is opened.
+#       This replaced every HID / display-state / lock-state stop source, all of
+#       which were removed in 1.2.7/1.3.0 after they misfired on device.
 #
 #   Nothing is injected into SpringBoard and no launchd service is installed.
 #   This is the only configuration that survived on-device A/B testing against
@@ -29,6 +32,7 @@
 #     detector only                      -> userspace restart OK
 #     + SpringBoard dylib (any content)  -> permanent black screen
 #     + standalone launchd daemon        -> permanent black screen
+#     + HID / display-state observation  -> intermittent black screen
 #
 #   Linking note: the alert channel (AudioServicesCreateSystemSoundID /
 #   AudioServicesPlaySystemSound) and vibration live in AudioToolbox, so imagent
@@ -50,7 +54,7 @@ export TARGET = iphone:clang:latest:15.4
 # roothide support that ships with roothide/theos (vendor/mod/roothide).
 THEOS_PACKAGE_SCHEME = roothide
 
-PACKAGE_VERSION = 1.4.1
+PACKAGE_VERSION = 1.4.2
 
 KSA_BUILD_VARIANT ?= imagent
 
@@ -73,6 +77,7 @@ KSA_SHARED_FILES = \
 	Sources/KSAConfig.m \
 	Sources/KSADedupCache.m \
 	Sources/KSALog.m \
+	Sources/KSARuntimeStatus.m \
 	Sources/KSATrigger.m
 
 KSA_CFLAGS = -fobjc-arc -I$(THEOS_PROJECT_DIR)/Sources -Wno-unused-parameter
@@ -90,9 +95,7 @@ endif
 ifeq ($(KSA_BUILD_VARIANT),imagent)
 KSA_DETECTOR_ALERT_FILES = \
 	Sources/KSAAlertManager.m \
-	Sources/KSASoundConverter.m \
-	Sources/Daemon/KSAHookInstallerDaemon.m \
-	Sources/Daemon/KSARuntimeStatus.m
+	Sources/KSASoundConverter.m
 KSA_DETECTOR_ALERT_CFLAGS = -DKSA_ALERT_IN_DETECTOR=1 -DKSA_NO_MEDIA_CHANNEL=1 -DKSA_STANDALONE_ALERTD=1
 KSA_DETECTOR_ALERT_FRAMEWORKS = AudioToolbox
 else
@@ -174,8 +177,6 @@ ksaalertd_FILES = \
 	Sources/Daemon/KSAAlertDaemonMain.m \
 	Sources/Daemon/KSAHIDPowerButton.m \
 	Sources/Daemon/KSAHIDEventMatcher.c \
-	Sources/Daemon/KSARuntimeStatus.m \
-	Sources/Daemon/KSAHookInstallerDaemon.m \
 	Sources/KSAAlertManager.m \
 	Sources/KSASoundConverter.m \
 	$(KSA_SHARED_FILES)
@@ -215,6 +216,3 @@ THEOS_PACKAGE_NAME = KeywordSMSAlert_DiagnosticD_LaunchDaemon
 else
 THEOS_PACKAGE_NAME = KeywordSMSAlert
 endif
-
-after-install::
-	install.exec "killall -9 imagent 2>/dev/null; true"

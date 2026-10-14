@@ -50,15 +50,21 @@ FOUNDATION_EXPORT BOOL KSAIsIMAgentProcess(void);
 /// The marker file lives in the REAL rootfs at
 /// /var/mobile/Library/Preferences/com.keyword.smsalert.safemode
 /// (the jailbreak root copy is accepted too, for people who drop it in jbroot).
-/// While it exists:
-///   * SpringBoard installs NO hook at all (no button watcher, no lock watcher),
-///   * the alert engine still runs and still logs, but the power button cannot
-///     stop an alert, because that is what the hooks are for.
-/// This exists so a black screen / hang can be bisected without uninstalling:
-///   ssh root@device 'touch /var/mobile/Library/Preferences/com.keyword.smsalert.safemode'
-/// then restart userspace (or `killall -9 SpringBoard`).
+/// While it exists the plugin does no work at all: the detector constructor returns
+/// before starting the alert engine, and the SMS watcher starts no timer and opens no
+/// database. It is a switch that works even when the configuration file is broken.
+///
+/// Turn it on without a terminal through the Settings pane, or with the helper:
+///   ksactl safemode on        # then restart imagent
+///   ksactl safemode off
 FOUNDATION_EXPORT NSString *KSASafeModeMarkerPath(void);
 FOUNDATION_EXPORT BOOL KSASafeModeEnabled(void);
+
+/// Package version of this build, e.g. @"1.4.2".
+///
+/// This literal MUST match PACKAGE_VERSION in the Makefile and Version in control;
+/// tests/verify_release_artifact.sh fails if they disagree.
+FOUNDATION_EXPORT NSString *KSAVersionString(void);
 
 /// Stable short hash (FNV-1a 64) of a string, used for privacy-preserving logs.
 /// Returns nil for nil input. Never used for security purposes.

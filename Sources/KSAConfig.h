@@ -93,17 +93,15 @@ typedef NS_ENUM(NSInteger, KSAOnNewMatchedSMS) {
 @property (nonatomic, readonly) BOOL debugEnabled;
 @property (nonatomic, readonly) BOOL logToFile;
 
-/// Test aid: when YES, SpringBoard fires one alert ~3 seconds after it loads with
-/// this tweak. Lets the alert engine and the power button stop be verified without
-/// sending a real SMS. Off by default.
+/// Test aid: when YES the alert engine fires one alert ~3 seconds after imagent
+/// finishes loading, so the alert can be verified without sending a real SMS.
+/// Off by default; while it stays on it re-fires on every imagent restart.
 @property (nonatomic, readonly) BOOL testAlertOnLoad;
 
-/// Safety switches for the two "backstop" hook families in imagent. Both default to
-/// YES. Setting one to NO and restarting imagent leaves only the (SMS specific)
-/// SMSServiceSession hooks active - useful to isolate behaviour if a message ever
-/// seemed to be missing.
 /// How often the (hook free) SMS database watcher looks for new messages, in seconds.
 /// The alert therefore fires within roughly `PollInterval` after the SMS arrives.
+/// The stop gesture is independent of this value: while an alert is playing, the read
+/// flag of the message that started it is checked every 0.5s.
 @property (nonatomic, readonly) NSTimeInterval pollInterval;
 
 /// Path of the configuration file that is currently in use (may be nil).

@@ -363,7 +363,7 @@ static NSString *KSAMessageItemText(id item)
     }
 }
 
-- (void)handlePlainText:(NSString *)text
+- (BOOL)handlePlainText:(NSString *)text
                  sender:(NSString *)sender
                identity:(NSString *)identity
                 service:(NSString *)service
@@ -372,30 +372,32 @@ static NSString *KSAMessageItemText(id item)
     @autoreleasepool {
         @try {
             [self _recordHookHit:source];
-            [self _evaluateText:text sender:sender identity:identity service:service source:source];
+            return [self _evaluateText:text sender:sender identity:identity service:service source:source];
         } @catch (NSException *exception) {
             KSAInfo(@"detector exception (ignored): %@", exception.reason);
         }
     }
+    return NO;
 }
 
 #pragma mark - Shared evaluation pipeline
 
-- (void)_evaluateText:(NSString *)text
+/// Returns YES only when this call actually handed a match to the alert engine.
+- (BOOL)_evaluateText:(NSString *)text
                sender:(NSString *)sender
              identity:(NSString *)identity
               service:(NSString *)service
                source:(NSString *)source
 {
     if (text.length == 0) {
-        return;
+        return NO;
     }
 
     KSAConfig *config = [KSAConfig sharedInstance];
     [config reloadIfNeeded];
 
     if (!config.enabled) {
-        return;
+        return NO;
     }
 
     [_statsLock lock];
@@ -412,13 +414,13 @@ static NSString *KSAMessageItemText(id item)
 
     if ([config shouldIgnoreSender:sender]) {
         KSADebug(@"sender is on the ignore list; not alerting");
-        return;
+        return NO;
     }
 
     NSString *matched = [config matchedKeywordInText:text];
     if (matched.length == 0) {
         KSADebug(@"no keyword matched");
-        return;
+        return NO;
     }
 
     if (identity.length == 0) {
@@ -431,7 +433,7 @@ static NSString *KSAMessageItemText(id item)
 
     if ([_dedup isDuplicateKey:identity window:config.duplicateInterval]) {
         KSAInfo(@"duplicate callback for the same SMS suppressed");
-        return;
+        return NO;
     }
 
     [_statsLock lock];
@@ -456,6 +458,7 @@ static NSString *KSAMessageItemText(id item)
             KSAHashString(matched));
     KSATriggerPost();
 #endif
+    return YES;
 }
 
 - (void)_recordHookHit:(NSString *)source

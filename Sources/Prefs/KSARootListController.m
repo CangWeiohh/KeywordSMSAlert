@@ -13,6 +13,8 @@
 #import "KSASoundPickerController.h"
 #import "KSAPrefsCommon.h"
 #import "KSAPrefsStore.h"
+// Macro only (KSA_RUNTIME_STATUS_PATH): no link dependency on the detector side.
+#import "KSARuntimeStatus.h"
 #import <Preferences/PSSpecifier.h>
 #import <Preferences/PSTableCell.h>
 
@@ -310,9 +312,8 @@ static NSString *const KSATriggerNotificationName = @"com.keyword.smsalert.trigg
 
 - (id)ksaRuntimeStatus:(PSSpecifier *)specifier
 {
-    NSString *path = @"/var/mobile/Library/Preferences/com.keyword.smsalert.runtime.plist";
-    NSDictionary *status = [NSDictionary dictionaryWithContentsOfFile:path];
-    BOOL running = [status[@"DaemonRunning"] boolValue] || [status[@"AlertEngineReady"] boolValue];
+    NSDictionary *status = [NSDictionary dictionaryWithContentsOfFile:KSA_RUNTIME_STATUS_PATH];
+    BOOL running = [status[@"EngineRunning"] boolValue] || [status[@"AlertEngineReady"] boolValue] || [status[@"DaemonRunning"] boolValue];
     if (!running) {
         return KSAPrefsLocalized(@"RuntimeNotRunning");
     }

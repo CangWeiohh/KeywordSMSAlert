@@ -167,10 +167,9 @@ UIPress(pressType Lock) → SBPressGestureRecognizer
 
 ```
 KeywordSMSAlert/
-├── Makefile                        # roothide scheme，两个 TWEAK_NAME
+├── Makefile                        # roothide scheme，默认只注入 imagent
 ├── control                         # Package: com.keyword.smsalert / iphoneos-arm64e
-├── KeywordSMSAlertDetector.plist    # filter: com.apple.imagent
-├── KeywordSMSAlertAlert.plist       # filter: com.apple.springboard
+├── KeywordSMSAlertDetector.plist    # filter: com.apple.imagent（唯一生产过滤器）
 ├── Resources/
 │   ├── alert.caf                    # 生成的提醒音（CAF / 44.1kHz / 16bit / mono LPCM）
 │   ├── make_alert_caf.py            # 音效生成脚本（可复现）
@@ -180,8 +179,8 @@ KeywordSMSAlert/
 │   ├── en.lproj/Localizable.strings
 │   └── zh-Hans.lproj/Localizable.strings
 ├── Sources/
-│   ├── KeywordSMSAlertDetector.xm   # imagent 全部 hook + 懒加载类挂载逻辑
-│   ├── KeywordSMSAlertAlert.xm      # SpringBoard hook + 入口
+│   ├── KeywordSMSAlertDetector.xm   # imagent 入口（零 hook，纯轮询 + 提醒引擎）
+│   ├── Diagnostics/                 # 诊断专用过滤 plist（绝不进入默认构建）
 │   ├── KSACommon.h/.m               # jbroot 路径、进程识别、哈希
 │   ├── KSAConfig.h/.m               # 配置解析 + 关键词匹配
 │   ├── Prefs/                       # 设置界面（PreferenceBundle，跑在「设置」App 内）
@@ -716,6 +715,20 @@ dpkg -r com.keyword.smsalert                           # 卸载：prerm 会先 b
 
 | 版本 | 要点 |
 | --- | --- |
+| **1.4.2** | **稳定性专项修复**。① `ksactl restart` 不再 kill SpringBoard（仅重启 imagent）；② 删除假桩 `KSAHookInstallerDaemon.m` 与 `_startAlertOnQueue` 中的死代码/误导日志；③ `KSAConfig.reloadIfNeeded` 加 mtime+size 快速路径（每 2 s 一次 `stat()` 代替完整重读重解析）；④ `_publishStatusWithConfig:` 节流 30 s（不再每次 poll 写盘）；⑤ `sqlite3_close_v2` + `@finally` finalize + `_noteError` 去重；⑥ `_baselineEstablished` 标志修复空库后首条短信漏报；⑦ `_readWatchTimer` 在 `stop()` 中正确取消 + 移除通知观察者；⑧ 状态通知改为在当前队列同步 post（不再依赖主 run loop）；⑨ `postinst` 改用 `launchctl kickstart` → SIGTERM → SIGKILL 渐进重启；⑩ `control` Description 更正（删除电源键停止表述）；⑪ SpringBoard 过滤 plist 移入 `Sources/Diagnostics/`；⑫ 新增 `tests/verify_release_artifact.sh`（49 项不变量断言）与 `tools/ksa-diagnose.sh`（只读诊断脚本）；⑬ 设置面板读 `EngineRunning` 键 + `KSA_RUNTIME_STATUS_PATH` 宏；⑭ `%ctor` 全包 `@try/@catch` + safemode 早退 + 低频资源采样 |
+| **1.4.1** | 提醒期间另起 0.5 s 定时器做已读检查（与检测轮询解耦，停止延迟 0–0.5 s） |
+| **1.4.0** | 「打开短信即停止」：记录触发提醒的 ROWID，提醒期间查 `is_read`，标记已读即停 |
+| **1.3.1** | **最小稳定版**：移除 HID/显示/锁定观察器、所有 Hook、SpringBoard 代码、独立进程；仅保留只读轮询 + 关键词匹配 + 提醒引擎 + 设置面板 + `ksactl` + boot-quiet |
+| **1.3.0** | 从发布构建彻底删除 IOHID（仍黑屏 → 证明非本插件代码问题） |
+| **1.2.9** | 新增 `IOHIDEventSystemClientCopyServices` 探测（黑屏 → 回退） |
+| **1.2.8** | HID 匹配放宽三候选 + 事件计数诊断（HID 事件零到达） |
+| **1.2.7** | 彻底删除所有显示状态停止规则（原理上不可行）；改为 IOHID + 锁定兜底 |
+| **1.2.6** | 停止源区分「通知唤醒」与「按键」（仍被下一次误判推翻） |
+| **1.2.5** | boot-quiet：%ctor 只做进程判定+日志，其余延后 10 s |
+| **1.2.4** | 转换结果改放配置文件旁边（imagent 沙箱路径） |
+| **1.2.3** | `SoundFile` 只存原始铃声路径，新增 `SoundFilePlayable` |
+| **1.2.2** | 修复 `PSButtonCell` 必须显式 `enabled=YES` |
+| **1.2.1** | m4r→CAF 转换前移到设置面板；停止源忽略通知点亮 |
 | **1.2.0** | **提醒引擎搬进 imagent**：包内只剩一个 detector dylib（+ 设置面板 + `ksactl`），无 SpringBoard 组件、无 LaunchDaemon、无第二个进程；imagent 不链接 AVFoundation；电源键停止改为屏幕/锁屏状态 Darwin 通知（无 entitlement）；`postinst` 清理历史遗留文件。触发原因：1.1.4 已完全不含 SpringBoard 组件却仍黑屏，说明“新增进程 / 新增注入”本身在这台设备上与电话助手冲突 |
 | **1.1.5** | **修复守护进程启动路径**（1.1.4 的守护进程实际起不来）。**关键坑：launchd 是 Apple 自己的二进制，没有经过 roothide 的 libvroot 路径改写**，因此 LaunchDaemon plist 里的 `ProgramArguments` **不能用 jbroot 相对路径**（`/usr/libexec/ksaalertd` 会被解析到只读的真实 rootfs → 找不到 → 守护进程永不启动）。正确做法与 roothide 自身的 `com.roothide.bootstrap.bootstrapd.plist` 一致：包内写 `@JBROOT@/usr/libexec/ksaalertd`，`postinst` 用 `sed -i "s|@JBROOT@|$(jbroot)|g"` 在安装时替换为绝对路径（替换失败会打印警告）。守护进程实现与 1.1.4 相同 |
 | **1.1.4** | **零 SpringBoard 注入 + 独立提醒守护进程**。实机 A/B（Diagnostic A/B/C）证明：与电话助手 2.5.1 共存时，只要再向 SpringBoard 注入任何 dylib（含只有一个空构造器的 probe）就会导致用户空间重启持续黑屏；禁用全部 hook 也无效，完全不注入则恢复为「黑约 1 秒后正常」。故：① 删除 `KeywordSMSAlertAlert.dylib` 与 SpringBoard filter plist；② 新增 `ksaalertd`（mobile LaunchDaemon）承载提醒引擎；③ 电源键停止改为 IOHID **只观察**监听（`type=3`、`Consumer 0x0C/Power 0x30` 按下沿，需 HID entitlement）；④ 设置面板新增「提醒服务状态」，无需 SSH 即可确认守护进程与按键监听状态；⑤ `TestAlertOnLoad` 语义改为「守护进程启动 3 秒后」 |

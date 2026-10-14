@@ -133,13 +133,17 @@ void KSADispatchAsync(dispatch_queue_t queue, dispatch_block_t block)
 
 NSString *KSASafeModeMarkerPath(void)
 {
-    // Deliberately the REAL rootfs path: it must be reachable by ssh/dpkg even when
-    // the jailbreak root changes, and SpringBoard runs as mobile which owns it.
+    // Deliberately the REAL rootfs path: it must be reachable by the package scripts
+    // even when the jailbreak root changes, and mobile owns it.
     return @"/var/mobile/Library/Preferences/com.keyword.smsalert.safemode";
 }
 
 BOOL KSASafeModeEnabled(void)
 {
+    // Checked once per process. The marker is a recovery switch: it is read when the
+    // plugin starts, and removing it takes effect on the next imagent restart. That is
+    // deliberate - a per-poll stat of the file would be a needless syscall, and a
+    // switch that flips mid-flight is harder to reason about during a recovery.
     static BOOL enabled = NO;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
@@ -153,5 +157,14 @@ BOOL KSASafeModeEnabled(void)
         }
     });
     return enabled;
+}
+
+#pragma mark - Version
+
+NSString *KSAVersionString(void)
+{
+    // Keep in sync with PACKAGE_VERSION (Makefile) and Version (control).
+    // tests/verify_release_artifact.sh asserts all three agree.
+    return @"1.4.2";
 }
 

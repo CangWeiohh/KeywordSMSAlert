@@ -29,10 +29,16 @@ chmod 755 /rootfs/var/mobile/Library/KeywordSMSAlert 2>/dev/null || true
 # same defaults compiled in, so an absent file behaves identically, and this script
 # only writes it when it does not exist yet - your settings are never overwritten by
 # an upgrade or by a reinstall.
-CONFIG=/var/mobile/Library/Preferences/com.keyword.smsalert.plist
+#
+# RootHide note: inside the bootstrap "/" is the jailbreak root, so the REAL user
+# preferences live under /rootfs. The runtime consumers (imagent, the Settings pane)
+# all prefer the real rootfs path first; writing the seed config anywhere else would
+# create a second, ignored copy.
+CONFIG=/rootfs/var/mobile/Library/Preferences/com.keyword.smsalert.plist
 if [ ! -f "$CONFIG" ]; then
 	mkdir -p "$(dirname "$CONFIG")" 2>/dev/null || true
-	cat > "$CONFIG" <<'PLIST'
+	{
+		cat > "$CONFIG" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -81,6 +87,7 @@ if [ ! -f "$CONFIG" ]; then
 </dict>
 </plist>
 PLIST
+	} || true
 	chmod 644 "$CONFIG" 2>/dev/null || true
 	echo "KeywordSMSAlert: default configuration created."
 else
@@ -96,12 +103,22 @@ if [ ! -d /Library/PreferenceLoader/Preferences ]; then
 	echo "KeywordSMSAlert:   (Settings -> KeywordSMSAlert) needs the 'preferenceloader' package."
 fi
 
-# The SMS detector is injected into imagent; restarting that daemon is invisible to
-# the user (launchd brings it straight back) and activates the new detector.  The
-# alert engine is a standalone launchd job: KeywordSMSAlert never injects SpringBoard.
-if command -v killall >/dev/null 2>&1; then
+# The SMS detector + alert engine are injected into imagent; restarting that
+# daemon is invisible to the user (launchd brings it straight back) and
+# activates the new code. KeywordSMSAlert injects nothing into SpringBoard and
+# installs no launchd service.
+#
+# Restart strategy (gentlest first): launchctl kickstart asks launchd to do a
+# clean restart; SIGTERM gives imagent a chance to flush; SIGKILL is the last
+# resort. Every step is guarded so a failure here never aborts the install.
+if command -v launchctl >/dev/null 2>&1; then
+	launchctl kickstart -k system/com.apple.imagent 2>/dev/null || true
+	echo "KeywordSMSAlert: imagent restarted via launchctl (detector + alert engine reloaded)."
+elif command -v killall >/dev/null 2>&1; then
+	killall -TERM imagent 2>/dev/null || true
+	sleep 1
 	killall -9 imagent 2>/dev/null || true
-	echo "KeywordSMSAlert: imagent restarted (detector reloaded)."
+	echo "KeywordSMSAlert: imagent restarted (detector + alert engine reloaded)."
 else
 	echo "KeywordSMSAlert: restart imagent manually: launchctl kickstart -k system/com.apple.imagent"
 fi

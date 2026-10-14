@@ -1,11 +1,14 @@
 #!/bin/sh
-# Stop the standalone alert job before remove/upgrade. Configuration is preserved.
+# KeywordSMSAlert prerm — runs before remove/upgrade.
+# Configuration is preserved (only the runtime status file is cleaned up).
+# No launchd service exists in this package; the bootout is a safety net for
+# upgrades from very old diagnostic builds that shipped one.
 
 if command -v launchctl >/dev/null 2>&1; then
 	launchctl bootout system/com.keyword.smsalert.alertd 2>/dev/null || true
 fi
-if command -v killall >/dev/null 2>&1; then
-	killall -9 ksaalertd 2>/dev/null || true
-fi
+
+# Clean the runtime status so a stale "running" indicator does not survive removal.
+rm -f /rootfs/var/mobile/Library/Preferences/com.keyword.smsalert.runtime.plist 2>/dev/null || true
 
 exit 0

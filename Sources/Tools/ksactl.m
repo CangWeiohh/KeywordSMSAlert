@@ -20,7 +20,7 @@
 //          /var/mobile/Library/Preferences/com.keyword.smsalert.plist
 //    * the real iOS user preferences file lives at
 //          /rootfs/var/mobile/Library/Preferences/com.keyword.smsalert.plist
-//      (the tweak running inside SpringBoard/imagent sees it as
+//      (the tweak running inside imagent sees it as
 //       /var/mobile/Library/Preferences/com.keyword.smsalert.plist and it always
 //       takes precedence - same rule as KSAConfig and the Settings pane).
 //
@@ -123,56 +123,121 @@ static id KSAObjectForKey(NSDictionary *configuration, NSString *key)
     return nil;
 }
 
-/// Emergency kill switch. While the marker exists the tweak installs NO hook in
-/// SpringBoard at all (so the power button can no longer stop an alert, but the
-/// tweak can no longer influence the screen/lock/button path either). This makes it
-/// possible to bisect a black screen or a hang without uninstalling the package.
-static NSString *KSASafeModeRealPath(void)
+// ---------------------------------------------------------------------------
+// Emergency kill switch
+//
+// While the marker exists the plugin does no work at all: the detector constructor
+// returns before starting the alert engine, and the SMS watcher starts no timer and
+// opens no database. It is a switch that keeps working even when the configuration
+// file is broken, so it can rule the plugin out of a black screen or a hang without
+// uninstalling the package.
+//
+// The marker is looked for in three places, because which one is visible depends on
+// how this tool was started (bootstrap shell, real rootfs, or a jailbroken process)
+// and roothide does not install into a fixed path:
+//   1. <jbroot>/var/mobile/Library/Preferences/...  (jbroot derived from this tool's
+//      own executable path, so no roothide API has to be linked in)
+//   2. /var/mobile/Library/Preferences/...          (real rootfs)
+//   3. /rootfs/var/mobile/Library/Preferences/...   (rootless style bootstrap)
+// "on" writes EVERY candidate whose parent directory exists, so the plugin finds the
+// marker whichever view of the filesystem it has. The file is a few bytes; writing it
+// three times costs nothing and removes an entire class of "the switch silently did
+// not work" failures.
+// ---------------------------------------------------------------------------
+
+static NSString * const kKSASafeModeFileName = @"com.keyword.smsalert.safemode";
+
+/// The jailbreak root, derived from this tool's own path ("<jbroot>/usr/bin/ksactl").
+static NSString *KSADerivedJailbreakRoot(void)
 {
-    return @"/rootfs/var/mobile/Library/Preferences/com.keyword.smsalert.safemode";
+    static NSString *root = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSString *executable = [[NSBundle mainBundle] executablePath];
+        if (executable.length == 0) {
+            executable = [NSProcessInfo processInfo].arguments.firstObject;
+        }
+        NSArray<NSString *> *components = [executable pathComponents];
+        NSUInteger count = components.count;
+        if (count >= 4 &&
+            [components[count - 1] isEqualToString:@"ksactl"] &&
+            [components[count - 2] isEqualToString:@"bin"] &&
+            [components[count - 3] isEqualToString:@"usr"]) {
+            root = [NSString pathWithComponents:[components subarrayWithRange:NSMakeRange(0, count - 3)]];
+        }
+    });
+    return root;
 }
 
-static NSString *KSASafeModeJailbreakPath(void)
+static NSArray<NSString *> *KSASafeModeCandidatePaths(void)
 {
-    return @"/var/mobile/Library/Preferences/com.keyword.smsalert.safemode";
+    NSMutableArray<NSString *> *paths = [NSMutableArray array];
+    NSString *jailbreakRoot = KSADerivedJailbreakRoot();
+    if (jailbreakRoot.length > 0) {
+        [paths addObject:[jailbreakRoot stringByAppendingPathComponent:
+                            [@"var/mobile/Library/Preferences" stringByAppendingPathComponent:kKSASafeModeFileName]]];
+    }
+    [paths addObject:[@"/var/mobile/Library/Preferences" stringByAppendingPathComponent:kKSASafeModeFileName]];
+    [paths addObject:[@"/rootfs/var/mobile/Library/Preferences" stringByAppendingPathComponent:kKSASafeModeFileName]];
+    return paths;
 }
 
 static void KSACommandSafeMode(NSArray<NSString *> *arguments)
 {
     NSString *action = arguments.count > 0 ? arguments[0].lowercaseString : @"status";
     NSFileManager *fileManager = [NSFileManager defaultManager];
-    NSString *real = KSASafeModeRealPath();
-    NSString *jailbreak = KSASafeModeJailbreakPath();
+    NSArray<NSString *> *candidates = KSASafeModeCandidatePaths();
 
     if ([action isEqualToString:@"on"] || [action isEqualToString:@"enable"] ||
         [action isEqualToString:@"1"] || [action isEqualToString:@"yes"]) {
         NSData *data = [@"safemode\n" dataUsingEncoding:NSUTF8StringEncoding];
-        if (![data writeToFile:real atomically:YES]) {
-            printf("%scould not create %s%s\n", KSARed.UTF8String, real.UTF8String, KSAReset.UTF8String);
+        NSUInteger written = 0;
+        for (NSString *path in candidates) {
+            BOOL isDirectory = NO;
+            NSString *directory = [path stringByDeletingLastPathComponent];
+            if (![fileManager fileExistsAtPath:directory isDirectory:&isDirectory] || !isDirectory) {
+                continue;
+            }
+            if ([data writeToFile:path atomically:YES]) {
+                printf("  wrote %s\n", path.UTF8String);
+                written++;
+            } else {
+                printf("  %scould not write %s%s\n", KSARed.UTF8String, path.UTF8String, KSAReset.UTF8String);
+            }
+        }
+        if (written == 0) {
+            printf("%scould not create the marker anywhere%s\n", KSARed.UTF8String, KSAReset.UTF8String);
+            for (NSString *path in candidates) {
+                printf("  tried %s\n", path.UTF8String);
+            }
             return;
         }
-        printf("%ssafemode ON%s  marker: %s\n", KSAGreen.UTF8String, KSAReset.UTF8String, real.UTF8String);
-        printf("  the tweak now installs NO SpringBoard hook\n");
-        printf("  apply it with: killall -9 SpringBoard   (or restart userspace)\n");
+        printf("%ssafemode ON%s (%lu marker file(s))\n",
+               KSAGreen.UTF8String, KSAReset.UTF8String, (unsigned long)written);
+        printf("  the plugin now does no work at all: no SMS polling, no alert engine\n");
+        printf("  apply it with: ksactl restart    (restarts imagent; SpringBoard is not touched)\n");
         return;
     }
 
     if ([action isEqualToString:@"off"] || [action isEqualToString:@"disable"] ||
         [action isEqualToString:@"0"] || [action isEqualToString:@"no"]) {
-        for (NSString *path in @[real, jailbreak]) {
+        for (NSString *path in candidates) {
             if ([fileManager fileExistsAtPath:path]) {
                 [fileManager removeItemAtPath:path error:NULL];
                 printf("  removed %s\n", path.UTF8String);
             }
         }
-        printf("safemode OFF (hooks are installed again with the next alert / after a restart)\n");
+        printf("safemode OFF (takes effect after the next imagent restart: ksactl restart)\n");
         return;
     }
 
-    BOOL on = [fileManager fileExistsAtPath:real] || [fileManager fileExistsAtPath:jailbreak];
-    printf("safemode : %s\n", on ? "ON  (no SpringBoard hook)" : "off");
-    printf("  real rootfs : %-7s %s\n", [fileManager fileExistsAtPath:real] ? "present" : "absent", real.UTF8String);
-    printf("  jailbreak   : %-7s %s\n", [fileManager fileExistsAtPath:jailbreak] ? "present" : "absent", jailbreak.UTF8String);
+    BOOL on = NO;
+    for (NSString *path in candidates) {
+        BOOL present = [fileManager fileExistsAtPath:path];
+        on = on || present;
+        printf("  %-7s %s\n", present ? "present" : "absent", path.UTF8String);
+    }
+    printf("safemode : %s\n", on ? "ON  (the plugin does no work)" : "off");
 }
 
 static void KSAPrintUsage(void)
@@ -188,9 +253,9 @@ static void KSAPrintUsage(void)
            "  ksactl senders  list|add|remove|clear   same for IgnoreSenders\n"
            "  ksactl test                       fire a test alert now\n"
            "  ksactl reload                     ask the tweak to reload the file\n"
-           "  ksactl restart                    restart imagent + SpringBoard (apply an update)\n"
+           "  ksactl restart                    restart imagent only (apply an update)\n"
            "  ksactl db [n]                     list the newest n SMS from sms.db (READ ONLY)\n"
-           "  ksactl safemode [on|off|status]   emergency: install NO SpringBoard hook\n\n"
+           "  ksactl safemode [on|off|status]   emergency: make the plugin do no work at all\n\n"
            "Common keys: Enabled AlertMode Keywords MatchMode VibrationDuration SoundDuration\n"
            "             SoundVolume DuplicateInterval DebugEnabled LogToFile TestAlertOnLoad\n");
 }
@@ -476,11 +541,18 @@ int main(int argc, char *argv[])
             KSAPostNotification(KSATriggerNotification);
             printf("test alert requested (the phone should vibrate / play the sound now)\n");
         } else if ([command isEqualToString:@"restart"]) {
-            printf("restarting imagent and SpringBoard in 1 second...\n");
+            // imagent ONLY, on purpose.
+            //
+            // This command used to kill SpringBoard as well. On this device an
+            // unnecessary SpringBoard restart is exactly the class of action that
+            // produced the reported black screen (a UI process being torn down while
+            // its display/wake state machine is mid-flight). The plugin has no
+            // SpringBoard component any more, so restarting SpringBoard can never be
+            // required to apply an update: reloading imagent is enough.
+            printf("restarting imagent in 1 second (SpringBoard is not touched)...\n");
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)),
                            dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
                 killall("imagent", SIGKILL);
-                killall("SpringBoard", SIGKILL);
                 _exit(0);
             });
         } else if ([command isEqualToString:@"reload"]) {

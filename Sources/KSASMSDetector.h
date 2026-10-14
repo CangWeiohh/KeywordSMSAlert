@@ -5,11 +5,10 @@
 //  Incoming SMS detection inside the daemon that actually owns SMS delivery:
 //  imagent (bundle id com.apple.imagent).
 //
-//  The daemon side never plays sound, never vibrates and never touches the
-//  Messages UI: it only extracts sender/text, matches the configured keywords and
-//  posts a Darwin notification to SpringBoard (see KSATrigger).
-//
-//  Hooked methods live in KeywordSMSAlert.xm; this class holds the logic.
+//  Detection is hook free. The only live entry point is handlePlainText:, called by
+//  KSASMSWatcher after it reads a new row out of sms.db. This class never touches the
+//  Messages UI and never plays sound: a match is handed to KSAAlertManager, which
+//  runs in this same process.
 //
 
 #ifndef KSA_SMS_DETECTOR_H
@@ -24,34 +23,19 @@
 /// Called once from the tweak constructor inside imagent.
 - (void)start;
 
-/// Hook entry point for the SMSServiceSession dictionary path. `message` is the
-/// CTMessage (may be nil). Must be fast and must never throw.
-- (void)handleCTMessage:(id)message
-             dictionary:(NSDictionary *)dictionary
-                 source:(NSString *)source;
-
-/// Hook entry point for the IMDMessageStore / IMDServiceSession path: `item` is an
-/// IMMessageItem (iOS 15.x verified), from which body/plainBody/sender/guid/service
-/// /isFromMe are read. Must be fast and must never throw.
-- (void)handleMessageItem:(id)item source:(NSString *)source;
-
 /// Entry point for the hook free database watcher: already extracted plain values.
-- (void)handlePlainText:(NSString *)text
+/// Returns YES only when this call is the one that handed a match to the alert
+/// engine (i.e. the message matched, was not ignored and was not a duplicate). The
+/// caller uses that to remember the ROWID whose read receipt should stop the alert.
+- (BOOL)handlePlainText:(NSString *)text
                  sender:(NSString *)sender
                identity:(NSString *)identity
                 service:(NSString *)service
                  source:(NSString *)source;
 
-/// Human readable summary of what was detected / hooked so far.
+/// Human readable summary of what was detected so far.
 - (NSString *)diagnostics;
 
 @end
-
-/// On-device diagnostics: logs the SMSServiceSession selectors that actually exist
-/// in this process (and, in debug mode, every runtime class whose name contains
-/// "SMS"). Used to verify the hook targets on a specific iOS build without a
-/// debugger: if a selector ever changes on a future iOS version, this log says so
-/// instead of silently doing nothing.
-FOUNDATION_EXPORT void KSALogSMSServiceSessionDiagnostics(void);
 
 #endif /* KSA_SMS_DETECTOR_H */

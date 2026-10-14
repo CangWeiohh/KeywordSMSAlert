@@ -23,25 +23,45 @@ static NSString *KSALogResolvePath(void)
         KSAPathInJB(@"/Library/KeywordSMSAlert/KeywordSMSAlert.log"),
         @"/var/mobile/Library/KeywordSMSAlert/KeywordSMSAlert.log",
     ];
+    NSFileManager *fm = [NSFileManager defaultManager];
     for (NSString *candidate in candidates) {
         if (candidate.length == 0) {
             continue;
         }
         NSString *directory = [candidate stringByDeletingLastPathComponent];
-        if ([[NSFileManager defaultManager] fileExistsAtPath:directory]) {
+        if (![fm fileExistsAtPath:directory]) {
+            // Best effort: the layout directory is normally created by the package, but
+            // if it is missing (fresh install race, sandbox restriction) try once. A
+            // failure just moves on to the next candidate.
+            [fm createDirectoryAtPath:directory
+          withIntermediateDirectories:YES
+                           attributes:nil
+                                error:NULL];
+        }
+        if ([fm fileExistsAtPath:directory]) {
             return candidate;
         }
     }
     return nil;
 }
 
+/// The path is cached, but a FAILED resolution (nil) is retried on the next call:
+/// during very early boot the directory may not be reachable yet, and caching that
+/// failure would silently drop every log line for the rest of the process lifetime.
 NSString *KSALogFilePath(void)
 {
     static NSString *path = nil;
+    static NSLock *pathLock = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        path = KSALogResolvePath();
+        pathLock = [[NSLock alloc] init];
     });
+
+    [pathLock lock];
+    if (path == nil) {
+        path = KSALogResolvePath();
+    }
+    [pathLock unlock];
     return path;
 }
 

@@ -6,14 +6,10 @@
 #import "KSAAlertManager.h"
 #import "KSACommon.h"
 #import "KSADedupCache.h"
-#import "KSAHookInstaller.h"
 #import "KSALog.h"
+#import "KSARuntimeStatus.h"
 #import "KSASoundConverter.h"
 #import "KSATrigger.h"
-
-#ifdef KSA_STANDALONE_ALERTD
-#import "Daemon/KSARuntimeStatus.h"
-#endif
 
 #import <AudioToolbox/AudioToolbox.h>
 #ifndef KSA_NO_MEDIA_CHANNEL
@@ -159,9 +155,7 @@ static const NSTimeInterval kKSASystemSoundRepeatInterval = 2.0;
     KSAInfo(@"alert engine ready (process %@, sound channel %@, sound file %@)",
             KSAProcessName(), config.soundChannel,
             [config resolvedSoundPath] ?: @"(system default sound id)");
-#ifdef KSA_STANDALONE_ALERTD
     KSARuntimeStatusUpdate(@{ @"AlertEngineReady": @YES });
-#endif
 }
 
 #ifndef KSA_NO_MEDIA_CHANNEL
@@ -216,10 +210,14 @@ static const NSTimeInterval kKSASystemSoundRepeatInterval = 2.0;
         KSADebug(@"state %ld -> %ld", (long)previous, (long)state);
         // In-process announcement so the SMS watcher can switch its fast read-receipt
         // check on exactly while an alert is playing.
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [[NSNotificationCenter defaultCenter]
-                postNotificationName:KSAAlertStateDidChangeNotification object:self];
-        });
+        //
+        // Posted on THIS queue, never on the main queue: imagent's main run loop can be
+        // busy or blocked (it is a push/IM daemon), and a stop gesture that only works
+        // when the main thread happens to be free is not a stop gesture. Both observers
+        // only read an atomic flag and hop to their own serial queue, so re-entering
+        // here from the notification is impossible.
+        [[NSNotificationCenter defaultCenter]
+            postNotificationName:KSAAlertStateDidChangeNotification object:self];
     }
 }
 
@@ -305,13 +303,10 @@ static const NSTimeInterval kKSASystemSoundRepeatInterval = 2.0;
         return;
     }
 
-    // The shared manager supports both the legacy SpringBoard diagnostic target and
-    // the production standalone daemon. In production the linked daemon stub reports
-    // the stop-event source ready, so this branch never installs a process hook.
-    if (!KSAPowerButtonHooksInstalled()) {
-        KSAInfo(@"installing power button hooks now (legacy/diagnostic target)");
-        KSAInstallPowerButtonHooksIfNeeded();
-    }
+    // There is deliberately NO hook installation here any more. This engine runs inside
+    // imagent and stops an alert by reading the read receipt of the message that started
+    // it (see KSASMSWatcher). Installing a SpringBoard hook from this code path was the
+    // cause of the userspace-reboot black screen and must never come back.
 
     BOOL useVibration = config.vibrationEnabled;
     BOOL useSound = config.soundEnabled;
@@ -331,11 +326,20 @@ static const NSTimeInterval kKSASystemSoundRepeatInterval = 2.0;
                  event, event.text ?: @"-", event.sender ?: @"-", event.keyword ?: @"-");
     }
 
-    if (useVibration) {
-        [self _startVibrationOnQueue:config];
-    }
-    if (useSound) {
-        [self _startSoundOnQueue:config];
+    // Every channel start is guarded: an AudioToolbox failure must not escape into the
+    // caller (the watcher's poll), where it would be mistaken for a database problem.
+    @try {
+        if (useVibration) {
+            [self _startVibrationOnQueue:config];
+        }
+        if (useSound) {
+            [self _startSoundOnQueue:config];
+        }
+    } @catch (NSException *exception) {
+        KSAInfo(@"starting the alert channels failed (%@); continuing without them", exception.reason);
+        [self _teardownChannelsOnQueue];
+        [self _setStateOnQueue:KSAAlertStateIdle];
+        return;
     }
 
     NSTimeInterval lifetime = 0;
@@ -358,12 +362,10 @@ static const NSTimeInterval kKSASystemSoundRepeatInterval = 2.0;
     [self _setStateOnQueue:KSAAlertStateAlerting];
     self.lastAlertStartedAt = [[NSDate date] timeIntervalSince1970];
     KSAInfo(@"alert started (lifetime %.1fs)", lifetime);
-#ifdef KSA_STANDALONE_ALERTD
     KSARuntimeStatusUpdate(@{
         @"Alerting": @YES,
         @"LastAlertStartedAt": @([[NSDate date] timeIntervalSince1970])
     });
-#endif
 }
 
 - (void)_stopOnQueueWithReason:(NSString *)reason
@@ -376,16 +378,20 @@ static const NSTimeInterval kKSASystemSoundRepeatInterval = 2.0;
 
     [self _setStateOnQueue:KSAAlertStateStopping];
     [self _cancelTimersOnQueue];
-    [self _teardownChannelsOnQueue];
+    // Teardown touches AudioToolbox and the player: never let a failure here leave the
+    // state machine stuck in "stopping" (which would silence every future alert).
+    @try {
+        [self _teardownChannelsOnQueue];
+    } @catch (NSException *exception) {
+        KSAInfo(@"tearing the alert channels down failed (%@); forcing idle", exception.reason);
+    }
     [self _setStateOnQueue:KSAAlertStateIdle];
     KSAInfo(@"alert stopped (%@)", reason ?: @"?");
-#ifdef KSA_STANDALONE_ALERTD
     KSARuntimeStatusUpdate(@{
         @"Alerting": @NO,
         @"LastAlertStoppedAt": @([[NSDate date] timeIntervalSince1970]),
         @"LastStopReason": reason ?: @"?"
     });
-#endif
 
     if (_pendingEvent != nil) {
         KSAMatchEvent *pending = _pendingEvent;

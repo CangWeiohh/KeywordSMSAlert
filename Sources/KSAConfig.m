@@ -267,6 +267,9 @@ static NSArray<NSString *> *KSAReadKeywordsFile(NSString *path)
     NSString *_activePath;
     NSTimeInterval _lastReload;
     BOOL _didLogLoad;
+    // mtime+size fingerprint: skip the full read+parse when the file is unchanged.
+    NSTimeInterval _cachedMTime;
+    unsigned long long _cachedSize;
 }
 @end
 
@@ -300,6 +303,21 @@ static NSArray<NSString *> *KSAReadKeywordsFile(NSString *path)
     if (_lastReload > 0 && (now - _lastReload) < kKSAReloadThrottle) {
         return;
     }
+
+    // Fast path: stat the active config file; if mtime+size are unchanged, skip
+    // the full read+parse. This turns the 2-second throttle from "re-read + re-parse
+    // every 2 s" into "one stat() every 2 s" (the file rarely changes).
+    NSString *path = KSAFirstExistingPath(KSAConfigCandidatePaths());
+    if (path != nil) {
+        NSDictionary *attrs = [[NSFileManager defaultManager] attributesOfItemAtPath:path error:NULL];
+        NSTimeInterval mtime = [attrs fileModificationDate].timeIntervalSince1970;
+        unsigned long long size = [attrs fileSize];
+        if (mtime == _cachedMTime && size == _cachedSize && _lastReload > 0) {
+            _lastReload = now;  // keep the throttle fresh without I/O
+            return;
+        }
+    }
+
     [self forceReload];
 }
 
@@ -343,6 +361,16 @@ static NSArray<NSString *> *KSAReadKeywordsFile(NSString *path)
             _snapshot = snapshot;
             _activePath = path;
             _lastReload = KSANow();
+            // Cache the file fingerprint so reloadIfNeeded can skip the full
+            // read+parse when nothing changed on disk.
+            if (path != nil) {
+                NSDictionary *attrs = [[NSFileManager defaultManager] attributesOfItemAtPath:path error:NULL];
+                _cachedMTime = [attrs fileModificationDate].timeIntervalSince1970;
+                _cachedSize = [attrs fileSize];
+            } else {
+                _cachedMTime = 0;
+                _cachedSize = 0;
+            }
         }
 
         KSALogConfigure([snapshot[kKeyDebugEnabled] boolValue],

@@ -6,8 +6,9 @@
 //
 //      IDLE -> MATCHED -> ALERTING -> STOPPED -> IDLE
 //
-//  The engine only runs inside SpringBoard. The detector (imagent) never plays
-//  sound or vibrates; it only posts a Darwin notification (KSATriggerPost()).
+//  In the shipped build the whole engine runs inside imagent, in the same process as
+//  the SMS detector, so a match never crosses a process boundary. The class is kept
+//  process agnostic and uses no SpringBoard API.
 //
 
 #ifndef KSA_ALERT_MANAGER_H
@@ -23,14 +24,15 @@ typedef NS_ENUM(NSInteger, KSAAlertState) {
     KSAAlertStateStopping = 3,
 };
 
-/// Description of one matching SMS. Only `source` is required outside the daemon.
+/// Description of one matching SMS.
 @interface KSAMatchEvent : NSObject
 @property (nonatomic, copy) NSString *text;
 @property (nonatomic, copy) NSString *sender;
 @property (nonatomic, copy) NSString *keyword;
-/// Best available identity (message GUID when the daemon exposes one).
+/// Best available identity. The database watcher passes "db-rowid-<n>", which is what
+/// makes the duplicate suppression and the read-receipt stop source work.
 @property (nonatomic, copy) NSString *identity;
-/// Free form origin tag used for logging ("sms-dict", "trigger", "test", ...).
+/// Free form origin tag used for logging ("smsdb", "imagent self test", ...).
 @property (nonatomic, copy) NSString *source;
 
 @end
@@ -43,8 +45,8 @@ FOUNDATION_EXPORT NSString *const KSAAlertStateDidChangeNotification;
 
 + (instancetype)sharedInstance;
 
-/// Reads the configuration and starts observing cross process triggers.
-/// Must be called from the SpringBoard process.
+/// Reads the configuration and starts the alert engine. Safe to call from any
+/// process; the shipped build calls it from imagent.
 - (void)start;
 
 /// Entry point used by the Darwin notification observer (any thread).
@@ -53,8 +55,8 @@ FOUNDATION_EXPORT NSString *const KSAAlertStateDidChangeNotification;
 /// Entry point used when the alert process itself knows the message details.
 - (void)handleMatchEvent:(KSAMatchEvent *)event;
 
-/// Immediately stops a running alert (power button, configuration change, unload).
-/// Safe to call from any thread, including while not alerting.
+/// Immediately stops a running alert (message marked as read, configuration change,
+/// unload). Safe to call from any thread, including while not alerting.
 - (void)stopAlertWithReason:(NSString *)reason;
 
 /// YES while an alert is audible/haptic.
@@ -62,9 +64,8 @@ FOUNDATION_EXPORT NSString *const KSAAlertStateDidChangeNotification;
 
 - (KSAAlertState)state;
 
-/// Wall-clock time the most recent alert started (0 when none has run yet). Used by
-/// the display-state stop source to tell the SMS notification waking the lock screen
-/// apart from a real power-button press.
+/// Wall-clock time the most recent alert started (0 when none has run yet).
+/// Diagnostic only: it is published to the runtime status file.
 @property (atomic, readonly) NSTimeInterval lastAlertStartedAt;
 
 @end
